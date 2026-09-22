@@ -48,7 +48,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.4.6"
+APP_VERSION = "0.4.7"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -925,6 +925,9 @@ class MainWindow(QMainWindow):
         self.current_movie: QMovie | None = None
         self.current_preview_path: Path | None = None
         self.current_preview_type: str | None = None
+        self.loaded_detail_state: tuple[str, str, int] | None = None
+        self.loading_detail = False
+        self.save_feedback_active = False
 
         self.audio_output = QAudioOutput(self)
         self.audio_output.setMuted(False)
@@ -1277,6 +1280,10 @@ class MainWindow(QMainWindow):
         self.open_btn.setEnabled(False)
         preview_actions.addWidget(self.open_btn)
 
+        self.open_path_btn = QPushButton("Otevřít cestu")
+        self.open_path_btn.setEnabled(False)
+        preview_actions.addWidget(self.open_path_btn)
+
         preview_actions.addStretch()
         preview_side.addLayout(preview_actions)
 
@@ -1314,7 +1321,10 @@ class MainWindow(QMainWindow):
 
         buttons = QHBoxLayout()
         self.save_btn = QPushButton("Uložit změny")
-        self.save_btn.setObjectName("primaryButton")
+        self.save_btn.setObjectName("saveButton")
+        self.save_btn.setEnabled(False)
+        self.save_btn.setProperty("dirty", False)
+        self.save_btn.setProperty("saved", False)
         buttons.addWidget(self.save_btn)
 
         self.delete_media_btn = QPushButton("Smazat z databáze")
@@ -1353,9 +1363,15 @@ class MainWindow(QMainWindow):
         self.media_list.filesDropped.connect(self.add_media_paths)
 
         self.search_edit.textChanged.connect(lambda _text: self.reload_media())
+
+        self.caption_edit.textChanged.connect(self._on_detail_edited)
+        self.notes_edit.textChanged.connect(self._on_detail_edited)
+        self.category_combo.currentIndexChanged.connect(self._on_detail_edited)
+
         self.save_btn.clicked.connect(self.save_current)
         self.delete_media_btn.clicked.connect(self.delete_selected_media)
         self.open_btn.clicked.connect(self.open_current)
+        self.open_path_btn.clicked.connect(self.open_current_path)
         self.play_pause_btn.clicked.connect(self.toggle_video_playback)
         self.mute_btn.clicked.connect(self.toggle_video_mute)
         self.media_player.playbackStateChanged.connect(
@@ -1535,6 +1551,29 @@ class MainWindow(QMainWindow):
 
             QPushButton#primaryButton:hover {
                 background: #3978e5;
+            }
+
+            QPushButton#saveButton {
+                background: #f2f4f6;
+                color: #9aa2ab;
+                border-color: #dfe3e7;
+                font-weight: 600;
+            }
+
+            QPushButton#saveButton[dirty="true"] {
+                background: #2d6cdf;
+                color: #ffffff;
+                border-color: #2d6cdf;
+            }
+
+            QPushButton#saveButton[dirty="true"]:hover {
+                background: #3978e5;
+            }
+
+            QPushButton#saveButton[saved="true"] {
+                background: #2e9b55;
+                color: #ffffff;
+                border-color: #2e9b55;
             }
 
             QPushButton#dangerButton,
@@ -2010,19 +2049,86 @@ class MainWindow(QMainWindow):
             self.clear_detail()
             return
 
-        self.current_media_id = int(row["id"])
-        self.caption_edit.setText(row["caption"])
-        self.notes_edit.setPlainText(row["notes"])
+        self.loading_detail = True
+        try:
+            self.current_media_id = int(row["id"])
+            self.caption_edit.setText(row["caption"])
+            self.notes_edit.setPlainText(row["notes"])
 
-        combo_index = self.category_combo.findData(int(row["category_id"]))
-        if combo_index >= 0:
-            self.category_combo.setCurrentIndex(combo_index)
+            combo_index = self.category_combo.findData(int(row["category_id"]))
+            if combo_index >= 0:
+                self.category_combo.setCurrentIndex(combo_index)
 
-        path = Path(row["path"])
-        self.path_label.setText(str(path))
-        self.path_label.setToolTip(str(path))
-        self.show_preview(path, row["media_type"])
-        self.open_btn.setEnabled(True)
+            self.loaded_detail_state = (
+                str(row["caption"]),
+                str(row["notes"]),
+                int(row["category_id"]),
+            )
+
+            path = Path(row["path"])
+            self.path_label.setText(str(path))
+            self.path_label.setToolTip(str(path))
+            self.show_preview(path, row["media_type"])
+            self.open_btn.setEnabled(path.exists())
+            self.open_path_btn.setEnabled(path.parent.exists())
+        finally:
+            self.loading_detail = False
+
+        self._update_save_button_state()
+
+    def _current_detail_state(self) -> tuple[str, str, int] | None:
+        if self.current_media_id is None:
+            return None
+
+        category_id = self.category_combo.currentData()
+        if category_id is None:
+            return None
+
+        return (
+            self.caption_edit.text(),
+            self.notes_edit.toPlainText(),
+            int(category_id),
+        )
+
+    def _on_detail_edited(self, *args) -> None:
+        if self.loading_detail:
+            return
+        self.save_feedback_active = False
+        self._update_save_button_state()
+
+    def _repolish_save_button(self) -> None:
+        self.save_btn.style().unpolish(self.save_btn)
+        self.save_btn.style().polish(self.save_btn)
+        self.save_btn.update()
+
+    def _update_save_button_state(self) -> None:
+        current = self._current_detail_state()
+        dirty = (
+            current is not None
+            and self.loaded_detail_state is not None
+            and current != self.loaded_detail_state
+        )
+
+        self.save_btn.setProperty("saved", False)
+        self.save_btn.setProperty("dirty", dirty)
+        self.save_btn.setText("Uložit změny")
+        self.save_btn.setEnabled(dirty)
+        self._repolish_save_button()
+
+    def _show_saved_feedback(self) -> None:
+        self.save_feedback_active = True
+        self.save_btn.setProperty("dirty", False)
+        self.save_btn.setProperty("saved", True)
+        self.save_btn.setText("✓ Uloženo")
+        self.save_btn.setEnabled(True)
+        self._repolish_save_button()
+        QTimer.singleShot(1100, self._finish_saved_feedback)
+
+    def _finish_saved_feedback(self) -> None:
+        if not self.save_feedback_active:
+            return
+        self.save_feedback_active = False
+        self._update_save_button_state()
 
     def show_preview(self, path: Path, media_type: str) -> None:
         self.current_preview_path = path
@@ -2191,7 +2297,7 @@ class MainWindow(QMainWindow):
             self._refresh_video_poster()
 
     def save_current(self) -> None:
-        if self.current_media_id is None:
+        if self.current_media_id is None or not self.save_btn.isEnabled():
             return
 
         category_id = self.category_combo.currentData()
@@ -2200,16 +2306,28 @@ class MainWindow(QMainWindow):
 
         media_id = self.current_media_id
         selected_category = self.selected_category_id()
+        caption = self.caption_edit.text()
+        notes = self.notes_edit.toPlainText()
 
         self.db.update_media(
             media_id,
-            self.caption_edit.text().strip(),
-            self.notes_edit.toPlainText().strip(),
+            caption.strip(),
+            notes.strip(),
             int(category_id),
         )
 
         self.reload_categories(selected_category)
         self.reload_media(select_media_id=media_id)
+
+        row = self.db.media_by_id(media_id)
+        if row is not None:
+            self.loaded_detail_state = (
+                str(row["caption"]),
+                str(row["notes"]),
+                int(row["category_id"]),
+            )
+
+        self._show_saved_feedback()
         self.statusBar().showMessage("Změny uloženy.", 3000)
 
     def move_selected_media_to(self, category_id: int) -> None:
@@ -2310,6 +2428,25 @@ class MainWindow(QMainWindow):
 
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
+    def open_current_path(self) -> None:
+        if self.current_media_id is None:
+            return
+
+        row = self.db.media_by_id(self.current_media_id)
+        if row is None:
+            return
+
+        folder = Path(row["path"]).parent
+        if not folder.exists():
+            QMessageBox.warning(
+                self,
+                "Cesta",
+                "Složka, ve které byl soubor uložený, už neexistuje.",
+            )
+            return
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
     def _restart_file_tracker(self) -> None:
         if self.tracker_observer is not None:
             self.tracker_observer.stop()
@@ -2336,6 +2473,8 @@ class MainWindow(QMainWindow):
         self.current_media_id = None
         self.current_preview_path = None
         self.current_preview_type = None
+        self.loaded_detail_state = None
+        self.save_feedback_active = False
 
         if self.current_movie is not None:
             self.current_movie.stop()
@@ -2344,10 +2483,21 @@ class MainWindow(QMainWindow):
         self.preview.clear()
         self.preview.setText("Vyber médium")
         self.preview.setToolTip("")
-        self.path_label.clear()
-        self.caption_edit.clear()
-        self.notes_edit.clear()
+        self.loading_detail = True
+        try:
+            self.path_label.clear()
+            self.caption_edit.clear()
+            self.notes_edit.clear()
+        finally:
+            self.loading_detail = False
+
         self.open_btn.setEnabled(False)
+        self.open_path_btn.setEnabled(False)
+        self.save_btn.setProperty("dirty", False)
+        self.save_btn.setProperty("saved", False)
+        self.save_btn.setText("Uložit změny")
+        self.save_btn.setEnabled(False)
+        self._repolish_save_button()
 
 
 def main() -> int:
