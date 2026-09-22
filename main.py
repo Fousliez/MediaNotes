@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.4.4"
+APP_VERSION = "0.4.5"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -52,7 +52,26 @@ DB_PATH = DATA_DIR / "media_notes.db"
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 GIF_EXTENSIONS = {".gif"}
-VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"}
+VIDEO_EXTENSIONS = {
+    ".mp4",
+    ".mkv",
+    ".webm",
+    ".avi",
+    ".mov",
+    ".m4v",
+    ".mpeg",
+    ".mpg",
+    ".wmv",
+    ".flv",
+    ".ogv",
+    ".ts",
+    ".mts",
+    ".m2ts",
+    ".3gp",
+    ".3g2",
+    ".vob",
+    ".asf",
+}
 SUPPORTED_EXTENSIONS = IMAGE_EXTENSIONS | GIF_EXTENSIONS | VIDEO_EXTENSIONS
 FINGERPRINT_CHUNK = 256 * 1024
 
@@ -82,6 +101,37 @@ def file_identity(path: Path) -> tuple[int | None, int | None, int | None, str |
 
 def normalized_path(path: str | Path) -> str:
     return str(Path(path).expanduser().resolve(strict=False))
+
+
+def extract_drop_paths(event) -> list[str]:
+    mime = event.mimeData()
+    paths: list[str] = []
+
+    if mime.hasUrls():
+        for url in mime.urls():
+            if url.isLocalFile():
+                local = url.toLocalFile()
+                if local:
+                    paths.append(local)
+
+    # Fallback pro některé linuxové správce souborů, které předají
+    # text/uri-list trochu jinak než Qt očekává.
+    if not paths and mime.hasText():
+        for line in mime.text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+
+            url = QUrl(line)
+            if url.isLocalFile():
+                local = url.toLocalFile()
+                if local:
+                    paths.append(local)
+            elif Path(line).expanduser().exists():
+                paths.append(line)
+
+    # Zachovej pořadí a odstraň duplicity.
+    return list(dict.fromkeys(paths))
 
 
 class Database:
@@ -503,7 +553,10 @@ class MediaListWidget(QListWidget):
         super().__init__(parent)
         self.setObjectName("mediaList")
         self.setAcceptDrops(True)
+        self.viewport().setAcceptDrops(True)
         self.setDragDropMode(QAbstractItemView.DropOnly)
+        self.setDefaultDropAction(Qt.CopyAction)
+        self.setDropIndicatorShown(False)
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setViewMode(QListWidget.IconMode)
         self.setResizeMode(QListWidget.Adjust)
@@ -512,45 +565,41 @@ class MediaListWidget(QListWidget):
         self.setGridSize(QSize(185, 140))
         self.setSpacing(3)
 
-    def _has_local_files(self, event) -> bool:
-        mime = event.mimeData()
-        return mime.hasUrls() and any(url.isLocalFile() for url in mime.urls())
-
     def _set_drag_active(self, active: bool) -> None:
         self.setProperty("dragActive", active)
         self.style().unpolish(self)
         self.style().polish(self)
 
     def dragEnterEvent(self, event) -> None:
-        if self._has_local_files(event):
-            event.acceptProposedAction()
+        paths = extract_drop_paths(event)
+        if paths:
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
             self._set_drag_active(True)
         else:
             event.ignore()
 
     def dragMoveEvent(self, event) -> None:
-        if self._has_local_files(event):
-            event.acceptProposedAction()
+        if extract_drop_paths(event):
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
         else:
             event.ignore()
 
     def dragLeaveEvent(self, event) -> None:
         self._set_drag_active(False)
-        super().dragLeaveEvent(event)
+        event.accept()
 
     def dropEvent(self, event) -> None:
         self._set_drag_active(False)
-        if not self._has_local_files(event):
+        paths = extract_drop_paths(event)
+        if not paths:
             event.ignore()
             return
 
-        paths = [
-            url.toLocalFile()
-            for url in event.mimeData().urls()
-            if url.isLocalFile()
-        ]
         self.filesDropped.emit(paths)
-        event.acceptProposedAction()
+        event.setDropAction(Qt.CopyAction)
+        event.accept()
 
     def paintEvent(self, event) -> None:
         super().paintEvent(event)
@@ -766,6 +815,7 @@ class MainWindow(QMainWindow):
         self.tracker_signals_connected = False
 
         self.setWindowTitle(f"MediaNotes {APP_VERSION}")
+        self.setAcceptDrops(True)
         self.resize(1180, 740)
         self.setMinimumSize(850, 560)
 
@@ -906,6 +956,31 @@ class MainWindow(QMainWindow):
                 f"Sledovač opravil {recovered} přesunutých souborů.",
                 5000,
             )
+
+    def dragEnterEvent(self, event) -> None:
+        paths = extract_drop_paths(event)
+        if paths:
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event) -> None:
+        if extract_drop_paths(event):
+            event.setDropAction(Qt.CopyAction)
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event) -> None:
+        paths = extract_drop_paths(event)
+        if not paths:
+            event.ignore()
+            return
+
+        self.add_media_paths(paths)
+        event.setDropAction(Qt.CopyAction)
+        event.accept()
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -1499,9 +1574,11 @@ class MainWindow(QMainWindow):
             str(Path.home()),
             (
                 "Média (*.png *.jpg *.jpeg *.webp *.bmp *.gif "
-                "*.mp4 *.mkv *.webm *.avi *.mov *.m4v);;"
+                "*.mp4 *.mkv *.webm *.avi *.mov *.m4v *.mpeg *.mpg "
+                "*.wmv *.flv *.ogv *.ts *.mts *.m2ts *.3gp *.3g2 *.vob *.asf);;"
                 "Obrázky a GIFy (*.png *.jpg *.jpeg *.webp *.bmp *.gif);;"
-                "Videa (*.mp4 *.mkv *.webm *.avi *.mov *.m4v);;"
+                "Videa (*.mp4 *.mkv *.webm *.avi *.mov *.m4v *.mpeg *.mpg "
+                "*.wmv *.flv *.ogv *.ts *.mts *.m2ts *.3gp *.3g2 *.vob *.asf);;"
                 "Všechny soubory (*)"
             ),
         )
