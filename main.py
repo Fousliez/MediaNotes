@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.6.8"
+APP_VERSION = "0.6.9"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1354,16 +1354,6 @@ class MainWindow(QMainWindow):
         root_layout.setContentsMargins(7, 6, 7, 5)
         root_layout.setSpacing(4)
 
-        top_bar = QHBoxLayout()
-        top_bar.setSpacing(6)
-
-        title = QLabel("MediaNotes")
-        title.setObjectName("appTitle")
-        top_bar.addWidget(title)
-
-        top_bar.addStretch()
-        root_layout.addLayout(top_bar)
-
         splitter = QSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
         splitter.setHandleWidth(1)
@@ -1374,6 +1364,10 @@ class MainWindow(QMainWindow):
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(3, 5, 5, 4)
         sidebar_layout.setSpacing(3)
+
+        title = QLabel("MediaNotes")
+        title.setObjectName("appTitle")
+        sidebar_layout.addWidget(title)
 
         self.notebook_btn = QPushButton("✎  Sešit")
         self.notebook_btn.setObjectName("notebookButton")
