@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.7.3"
+APP_VERSION = "0.7.4"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1524,6 +1524,29 @@ class MainWindow(QMainWindow):
         detail_layout.setContentsMargins(8, 6, 6, 6)
         detail_layout.setSpacing(5)
 
+        rating_row = QHBoxLayout()
+        rating_row.setSpacing(3)
+
+        rating_label = QLabel("Hodnocení")
+        rating_label.setObjectName("fieldLabel")
+        rating_row.addWidget(rating_label)
+
+        self.rating_buttons: list[QPushButton] = []
+        for value in (1, 2, 3):
+            button = QPushButton("★")
+            button.setObjectName("ratingButton")
+            button.setProperty("active", False)
+            button.setFixedSize(29, 27)
+            button.setToolTip(f"{value} hvězda" if value == 1 else f"{value} hvězdy")
+            button.clicked.connect(
+                lambda _checked=False, rating=value: self.set_rating(rating)
+            )
+            self.rating_buttons.append(button)
+            rating_row.addWidget(button)
+
+        rating_row.addStretch()
+        detail_layout.addLayout(rating_row)
+
         self.preview_stack = QStackedWidget()
 
         self.preview = QLabel("Vyber médium")
@@ -1598,29 +1621,6 @@ class MainWindow(QMainWindow):
 
         self.category_combo = QComboBox()
         detail_layout.addWidget(self.category_combo)
-
-        rating_row = QHBoxLayout()
-        rating_row.setSpacing(3)
-
-        rating_label = QLabel("Hodnocení")
-        rating_label.setObjectName("fieldLabel")
-        rating_row.addWidget(rating_label)
-
-        self.rating_buttons: list[QPushButton] = []
-        for value in (1, 2, 3):
-            button = QPushButton("★")
-            button.setObjectName("ratingButton")
-            button.setProperty("active", False)
-            button.setFixedSize(29, 27)
-            button.setToolTip(f"{value} hvězda" if value == 1 else f"{value} hvězdy")
-            button.clicked.connect(
-                lambda _checked=False, rating=value: self.set_rating(rating)
-            )
-            self.rating_buttons.append(button)
-            rating_row.addWidget(button)
-
-        rating_row.addStretch()
-        detail_layout.addLayout(rating_row)
 
         buttons = QHBoxLayout()
         self.save_btn = QPushButton("Uložit změny")
