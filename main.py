@@ -35,20 +35,25 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QStackedWidget,
     QStyle,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer, QVideoSink
+from PySide6.QtMultimediaWidgets import QVideoWidget
+
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.4.5"
+APP_VERSION = "0.4.6"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
 DB_PATH = DATA_DIR / "media_notes.db"
+THUMB_DIR = DATA_DIR / "thumbnails"
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 GIF_EXTENSIONS = {".gif"}
@@ -132,6 +137,10 @@ def extract_drop_paths(event) -> list[str]:
 
     # Zachovej pořadí a odstraň duplicity.
     return list(dict.fromkeys(paths))
+
+
+def video_thumbnail_path(media_id: int) -> Path:
+    return THUMB_DIR / f"{media_id}.jpg"
 
 
 class Database:
@@ -616,6 +625,113 @@ class MediaListWidget(QListWidget):
         )
 
 
+class VideoThumbnailer(QObject):
+    thumbnailReady = Signal(int, str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        THUMB_DIR.mkdir(parents=True, exist_ok=True)
+
+        self.queue: list[tuple[int, Path]] = []
+        self.queued_ids: set[int] = set()
+        self.current_id: int | None = None
+        self.current_path: Path | None = None
+
+        self.audio = QAudioOutput(self)
+        self.audio.setMuted(True)
+
+        self.sink = QVideoSink(self)
+        self.player = QMediaPlayer(self)
+        self.player.setAudioOutput(self.audio)
+        self.player.setVideoOutput(self.sink)
+
+        self.sink.videoFrameChanged.connect(self._on_frame)
+        self.player.mediaStatusChanged.connect(self._on_status)
+
+    def request(self, media_id: int, path: Path) -> None:
+        if not path.is_file():
+            return
+
+        thumb = video_thumbnail_path(media_id)
+        try:
+            if thumb.is_file() and thumb.stat().st_mtime >= path.stat().st_mtime:
+                return
+        except OSError:
+            pass
+
+        if self.current_id == media_id or media_id in self.queued_ids:
+            return
+
+        self.queue.append((media_id, path))
+        self.queued_ids.add(media_id)
+
+        if self.current_id is None:
+            QTimer.singleShot(0, self._next)
+
+    def _next(self) -> None:
+        if self.current_id is not None or not self.queue:
+            return
+
+        media_id, path = self.queue.pop(0)
+        self.queued_ids.discard(media_id)
+
+        if not path.is_file():
+            QTimer.singleShot(0, self._next)
+            return
+
+        self.current_id = media_id
+        self.current_path = path
+        self.player.stop()
+        self.player.setSource(QUrl.fromLocalFile(str(path)))
+
+    def _on_status(self, status) -> None:
+        if self.current_id is None:
+            return
+
+        if status == QMediaPlayer.MediaStatus.LoadedMedia:
+            duration = self.player.duration()
+            position = 700
+            if duration > 0:
+                position = min(1200, max(100, duration // 10))
+            self.player.setPosition(position)
+            self.player.play()
+        elif status == QMediaPlayer.MediaStatus.InvalidMedia:
+            self._finish_current(None)
+
+    def _on_frame(self, frame) -> None:
+        if self.current_id is None or not frame.isValid():
+            return
+
+        image = frame.toImage()
+        if image.isNull():
+            return
+
+        target = video_thumbnail_path(self.current_id)
+        THUMB_DIR.mkdir(parents=True, exist_ok=True)
+
+        scaled = image.scaled(
+            360,
+            220,
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation,
+        )
+
+        if scaled.save(str(target), "JPG", 88):
+            self._finish_current(target)
+
+    def _finish_current(self, target: Path | None) -> None:
+        media_id = self.current_id
+        self.player.stop()
+        self.player.setSource(QUrl())
+        self.current_id = None
+        self.current_path = None
+
+        if media_id is not None and target is not None:
+            self.thumbnailReady.emit(media_id, str(target))
+
+        QTimer.singleShot(0, self._next)
+
+
 class TrackerBridge(QObject):
     moved = Signal(str, str, bool)
     created = Signal(str)
@@ -809,6 +925,15 @@ class MainWindow(QMainWindow):
         self.current_movie: QMovie | None = None
         self.current_preview_path: Path | None = None
         self.current_preview_type: str | None = None
+
+        self.audio_output = QAudioOutput(self)
+        self.audio_output.setMuted(False)
+        self.media_player = QMediaPlayer(self)
+        self.media_player.setAudioOutput(self.audio_output)
+
+        self.thumbnailer = VideoThumbnailer(self)
+        self.thumbnailer.thumbnailReady.connect(self._on_thumbnail_ready)
+
         self.tracker_bridge = TrackerBridge()
         self.tracker_observer: Observer | None = None
         self.recovery_thread: threading.Thread | None = None
@@ -1112,11 +1237,23 @@ class MainWindow(QMainWindow):
         preview_side = QVBoxLayout()
         preview_side.setSpacing(4)
 
+        self.preview_stack = QStackedWidget()
+
         self.preview = QLabel("Vyber médium")
         self.preview.setObjectName("preview")
         self.preview.setAlignment(Qt.AlignCenter)
         self.preview.setMinimumSize(370, 215)
-        preview_side.addWidget(self.preview, 1)
+
+        self.video_widget = QVideoWidget()
+        self.video_widget.setMinimumSize(370, 215)
+        self.video_widget.setStyleSheet("background: #000000;")
+
+        self.preview_stack.addWidget(self.preview)
+        self.preview_stack.addWidget(self.video_widget)
+        self.preview_stack.setCurrentWidget(self.preview)
+        preview_side.addWidget(self.preview_stack, 1)
+
+        self.media_player.setVideoOutput(self.video_widget)
 
         self.path_label = QLabel("")
         self.path_label.setObjectName("pathLabel")
@@ -1125,9 +1262,21 @@ class MainWindow(QMainWindow):
         preview_side.addWidget(self.path_label)
 
         preview_actions = QHBoxLayout()
+
+        self.play_pause_btn = QPushButton("▶ Přehrát")
+        self.play_pause_btn.setEnabled(False)
+        self.play_pause_btn.setVisible(False)
+        preview_actions.addWidget(self.play_pause_btn)
+
+        self.mute_btn = QPushButton("Ztlumit")
+        self.mute_btn.setEnabled(False)
+        self.mute_btn.setVisible(False)
+        preview_actions.addWidget(self.mute_btn)
+
         self.open_btn = QPushButton("Otevřít soubor")
         self.open_btn.setEnabled(False)
         preview_actions.addWidget(self.open_btn)
+
         preview_actions.addStretch()
         preview_side.addLayout(preview_actions)
 
@@ -1207,6 +1356,14 @@ class MainWindow(QMainWindow):
         self.save_btn.clicked.connect(self.save_current)
         self.delete_media_btn.clicked.connect(self.delete_selected_media)
         self.open_btn.clicked.connect(self.open_current)
+        self.play_pause_btn.clicked.connect(self.toggle_video_playback)
+        self.mute_btn.clicked.connect(self.toggle_video_mute)
+        self.media_player.playbackStateChanged.connect(
+            self._on_video_playback_state_changed
+        )
+        self.media_player.mediaStatusChanged.connect(
+            self._on_video_media_status_changed
+        )
 
     def _apply_style(self) -> None:
         self.setStyleSheet(
@@ -1522,7 +1679,13 @@ class MainWindow(QMainWindow):
             item.setToolTip(
                 f"{path}\nKategorie: {row['category_name']}"
             )
-            item.setIcon(self.make_icon(path, row["media_type"]))
+            item.setIcon(
+                self.make_icon(
+                    path,
+                    row["media_type"],
+                    int(row["id"]),
+                )
+            )
             item.setTextAlignment(Qt.AlignHCenter | Qt.AlignTop)
             self.media_list.addItem(item)
 
@@ -1543,29 +1706,70 @@ class MainWindow(QMainWindow):
         else:
             self.clear_detail()
 
-    def make_icon(self, path: Path, media_type: str) -> QIcon:
+    def _thumbnail_icon(self, pixmap: QPixmap) -> QIcon:
+        canvas = QPixmap(160, 106)
+        canvas.fill(QColor("#ffffff"))
+        scaled = pixmap.scaled(
+            156,
+            102,
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation,
+        )
+        painter = QPainter(canvas)
+        x = (canvas.width() - scaled.width()) // 2
+        y = (canvas.height() - scaled.height()) // 2
+        painter.drawPixmap(x, y, scaled)
+        painter.end()
+        return QIcon(canvas)
+
+    def make_icon(
+        self,
+        path: Path,
+        media_type: str,
+        media_id: int | None = None,
+    ) -> QIcon:
         if path.exists() and media_type in {"image", "gif"}:
             pixmap = QPixmap(str(path))
             if not pixmap.isNull():
-                canvas = QPixmap(160, 106)
-                canvas.fill(QColor("#ffffff"))
-                scaled = pixmap.scaled(
-                    156,
-                    102,
-                    Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation,
-                )
-                painter = QPainter(canvas)
-                x = (canvas.width() - scaled.width()) // 2
-                y = (canvas.height() - scaled.height()) // 2
-                painter.drawPixmap(x, y, scaled)
-                painter.end()
-                return QIcon(canvas)
+                return self._thumbnail_icon(pixmap)
 
         if media_type == "video":
+            if media_id is not None:
+                thumb = video_thumbnail_path(media_id)
+                if thumb.is_file():
+                    pixmap = QPixmap(str(thumb))
+                    if not pixmap.isNull():
+                        try:
+                            if thumb.stat().st_mtime >= path.stat().st_mtime:
+                                return self._thumbnail_icon(pixmap)
+                        except OSError:
+                            pass
+
+                self.thumbnailer.request(media_id, path)
+
             return self.style().standardIcon(QStyle.SP_MediaPlay)
 
         return self.style().standardIcon(QStyle.SP_FileIcon)
+
+    def _on_thumbnail_ready(self, media_id: int, thumb_path: str) -> None:
+        pixmap = QPixmap(thumb_path)
+        if pixmap.isNull():
+            return
+
+        icon = self._thumbnail_icon(pixmap)
+        for index in range(self.media_list.count()):
+            item = self.media_list.item(index)
+            if int(item.data(Qt.UserRole)) == media_id:
+                item.setIcon(icon)
+                break
+
+        if (
+            self.current_media_id == media_id
+            and self.current_preview_type == "video"
+            and self.media_player.playbackState()
+            != QMediaPlayer.PlaybackState.PlayingState
+        ):
+            self._refresh_video_poster()
 
     def add_media_dialog(self) -> None:
         files, _ = QFileDialog.getOpenFileNames(
@@ -1824,12 +2028,21 @@ class MainWindow(QMainWindow):
         self.current_preview_path = path
         self.current_preview_type = media_type
 
+        self.media_player.stop()
+        self.media_player.setSource(QUrl())
+        self.preview_stack.setCurrentWidget(self.preview)
+        self.play_pause_btn.setVisible(False)
+        self.play_pause_btn.setEnabled(False)
+        self.mute_btn.setVisible(False)
+        self.mute_btn.setEnabled(False)
+
         if self.current_movie is not None:
             self.current_movie.stop()
             self.current_movie = None
             self.preview.setMovie(None)
 
         self.preview.clear()
+        self.preview.setToolTip("")
 
         if not path.exists():
             self.preview.setText(f"Soubor nenalezen\n\n{path}")
@@ -1849,17 +2062,92 @@ class MainWindow(QMainWindow):
             return
 
         if media_type == "video":
-            self.preview.setPixmap(
-                self.style()
-                .standardIcon(QStyle.SP_MediaPlay)
-                .pixmap(QSize(96, 96))
-            )
-            self.preview.setToolTip(
-                "Video se zatím otevírá v systémovém přehrávači."
-            )
+            self.media_player.setSource(QUrl.fromLocalFile(str(path)))
+            self.play_pause_btn.setVisible(True)
+            self.play_pause_btn.setEnabled(True)
+            self.mute_btn.setVisible(True)
+            self.mute_btn.setEnabled(True)
+            self._update_mute_button()
+            self._refresh_video_poster()
+
+            if self.current_media_id is not None:
+                self.thumbnailer.request(self.current_media_id, path)
             return
 
         self.preview.setText(path.name)
+
+    def _refresh_video_poster(self) -> None:
+        if (
+            self.current_preview_type != "video"
+            or self.current_media_id is None
+        ):
+            return
+
+        thumb = video_thumbnail_path(self.current_media_id)
+        if thumb.is_file():
+            pixmap = QPixmap(str(thumb))
+            if not pixmap.isNull():
+                target = QSize(
+                    max(100, self.preview.width() - 12),
+                    max(100, self.preview.height() - 12),
+                )
+                self.preview.setPixmap(
+                    pixmap.scaled(
+                        target,
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation,
+                    )
+                )
+                return
+
+        self.preview.setPixmap(
+            self.style()
+            .standardIcon(QStyle.SP_MediaPlay)
+            .pixmap(QSize(72, 72))
+        )
+
+    def toggle_video_playback(self) -> None:
+        if (
+            self.current_preview_type != "video"
+            or self.current_preview_path is None
+            or not self.current_preview_path.is_file()
+        ):
+            return
+
+        if (
+            self.media_player.playbackState()
+            == QMediaPlayer.PlaybackState.PlayingState
+        ):
+            self.media_player.pause()
+            return
+
+        if self.media_player.source().isEmpty():
+            self.media_player.setSource(
+                QUrl.fromLocalFile(str(self.current_preview_path))
+            )
+
+        self.preview_stack.setCurrentWidget(self.video_widget)
+        self.media_player.play()
+
+    def toggle_video_mute(self) -> None:
+        self.audio_output.setMuted(not self.audio_output.isMuted())
+        self._update_mute_button()
+
+    def _update_mute_button(self) -> None:
+        self.mute_btn.setText(
+            "Zapnout zvuk" if self.audio_output.isMuted() else "Ztlumit"
+        )
+
+    def _on_video_playback_state_changed(self, state) -> None:
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self.play_pause_btn.setText("⏸ Pauza")
+        else:
+            self.play_pause_btn.setText("▶ Přehrát")
+
+    def _on_video_media_status_changed(self, status) -> None:
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            self.media_player.setPosition(0)
+            self.play_pause_btn.setText("▶ Přehrát")
 
     def _refresh_static_preview(self) -> None:
         if (
@@ -1896,6 +2184,11 @@ class MainWindow(QMainWindow):
             )
         elif self.current_preview_type == "image":
             self._refresh_static_preview()
+        elif (
+            self.current_preview_type == "video"
+            and self.preview_stack.currentWidget() is self.preview
+        ):
+            self._refresh_video_poster()
 
     def save_current(self) -> None:
         if self.current_media_id is None:
@@ -2032,6 +2325,14 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def clear_detail(self) -> None:
+        self.media_player.stop()
+        self.media_player.setSource(QUrl())
+        self.preview_stack.setCurrentWidget(self.preview)
+        self.play_pause_btn.setVisible(False)
+        self.play_pause_btn.setEnabled(False)
+        self.mute_btn.setVisible(False)
+        self.mute_btn.setEnabled(False)
+
         self.current_media_id = None
         self.current_preview_path = None
         self.current_preview_type = None
