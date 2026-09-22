@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
 set -e
 
-cd "$(dirname "$0")"
+APP_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$APP_DIR"
+
+# Lokální pracovní kopie je určená pro běh aplikace.
+# Při spuštění ji srovnáme s aktuální větví origin/main.
+if [ -d ".git" ]; then
+    git config core.fileMode false >/dev/null 2>&1 || true
+
+    if timeout 12s git fetch --quiet origin main >/dev/null 2>&1; then
+        git reset --hard --quiet origin/main >/dev/null 2>&1 || true
+    fi
+fi
 
 if [ ! -d ".venv" ]; then
     python3 -m venv .venv
