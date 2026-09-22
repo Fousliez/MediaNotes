@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import os
 import sqlite3
 import sys
+import threading
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QUrl, Signal
+from PySide6.QtCore import QObject, QSize, Qt, QUrl, Signal
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
@@ -38,6 +41,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
 DB_PATH = DATA_DIR / "media_notes.db"
@@ -46,6 +52,34 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 GIF_EXTENSIONS = {".gif"}
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v"}
 SUPPORTED_EXTENSIONS = IMAGE_EXTENSIONS | GIF_EXTENSIONS | VIDEO_EXTENSIONS
+FINGERPRINT_CHUNK = 256 * 1024
+
+
+def fingerprint_file(path: Path) -> str | None:
+    try:
+        size = path.stat().st_size
+        digest = hashlib.sha256()
+        digest.update(str(size).encode("ascii"))
+        with path.open("rb") as handle:
+            digest.update(handle.read(FINGERPRINT_CHUNK))
+            if size > FINGERPRINT_CHUNK:
+                handle.seek(max(0, size - FINGERPRINT_CHUNK))
+                digest.update(handle.read(FINGERPRINT_CHUNK))
+        return digest.hexdigest()
+    except (OSError, PermissionError):
+        return None
+
+
+def file_identity(path: Path) -> tuple[int | None, int | None, int | None, str | None]:
+    try:
+        stat = path.stat()
+    except (OSError, PermissionError):
+        return None, None, None, None
+    return int(stat.st_dev), int(stat.st_ino), int(stat.st_size), fingerprint_file(path)
+
+
+def normalized_path(path: str | Path) -> str:
+    return str(Path(path).expanduser().resolve(strict=False))
 
 
 class Database:
@@ -57,6 +91,7 @@ class Database:
         self._migrate_schema()
         self._ensure_default_category()
         self._normalize_category_order()
+        self._backfill_media_identity()
 
     def _create_schema(self) -> None:
         self.conn.executescript(
@@ -77,6 +112,10 @@ class Database:
                 caption TEXT NOT NULL DEFAULT '',
                 notes TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                file_device INTEGER,
+                file_inode INTEGER,
+                file_size INTEGER,
+                fingerprint TEXT,
                 FOREIGN KEY (category_id) REFERENCES categories(id)
             );
 
@@ -87,14 +126,62 @@ class Database:
         self.conn.commit()
 
     def _migrate_schema(self) -> None:
-        columns = {
+        category_columns = {
             row["name"]
             for row in self.conn.execute("PRAGMA table_info(categories)").fetchall()
         }
-        if "sort_order" not in columns:
+        if "sort_order" not in category_columns:
             self.conn.execute(
                 "ALTER TABLE categories ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
             )
+
+        media_columns = {
+            row["name"]
+            for row in self.conn.execute("PRAGMA table_info(media)").fetchall()
+        }
+        identity_columns = {
+            "file_device": "INTEGER",
+            "file_inode": "INTEGER",
+            "file_size": "INTEGER",
+            "fingerprint": "TEXT",
+        }
+        for name, sql_type in identity_columns.items():
+            if name not in media_columns:
+                self.conn.execute(
+                    f"ALTER TABLE media ADD COLUMN {name} {sql_type}"
+                )
+
+        self.conn.commit()
+
+    def _backfill_media_identity(self) -> None:
+        rows = self.conn.execute(
+            """
+            SELECT id, path
+            FROM media
+            WHERE file_device IS NULL
+               OR file_inode IS NULL
+               OR file_size IS NULL
+               OR fingerprint IS NULL
+            """
+        ).fetchall()
+
+        changed = False
+        for row in rows:
+            path = Path(row["path"])
+            if not path.is_file():
+                continue
+            device, inode, size, fingerprint = file_identity(path)
+            self.conn.execute(
+                """
+                UPDATE media
+                SET file_device = ?, file_inode = ?, file_size = ?, fingerprint = ?
+                WHERE id = ?
+                """,
+                (device, inode, size, fingerprint, int(row["id"])),
+            )
+            changed = True
+
+        if changed:
             self.conn.commit()
 
     def _ensure_default_category(self) -> None:
@@ -206,7 +293,7 @@ class Database:
         self._normalize_category_order()
 
     def add_media(self, path: str, media_type: str, category_id: int) -> bool:
-        normalized = str(Path(path).expanduser().resolve())
+        normalized = normalized_path(path)
         exists = self.conn.execute(
             "SELECT id FROM media WHERE path = ? LIMIT 1",
             (normalized,),
@@ -214,15 +301,111 @@ class Database:
         if exists is not None:
             return False
 
+        file_path = Path(normalized)
+        device, inode, size, fingerprint = file_identity(file_path)
         self.conn.execute(
             """
-            INSERT INTO media(path, media_type, category_id)
-            VALUES (?, ?, ?)
+            INSERT INTO media(
+                path,
+                media_type,
+                category_id,
+                file_device,
+                file_inode,
+                file_size,
+                fingerprint
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (normalized, media_type, category_id),
+            (
+                normalized,
+                media_type,
+                category_id,
+                device,
+                inode,
+                size,
+                fingerprint,
+            ),
         )
         self.conn.commit()
         return True
+
+    def tracked_media(self):
+        return self.conn.execute(
+            """
+            SELECT id, path, file_device, file_inode, file_size, fingerprint
+            FROM media
+            ORDER BY id
+            """
+        ).fetchall()
+
+    def missing_media(self):
+        return [
+            row
+            for row in self.tracked_media()
+            if not Path(row["path"]).is_file()
+        ]
+
+    def media_id_for_path(self, path: str | Path) -> int | None:
+        row = self.conn.execute(
+            "SELECT id FROM media WHERE path = ? LIMIT 1",
+            (normalized_path(path),),
+        ).fetchone()
+        return None if row is None else int(row["id"])
+
+    def update_media_path(self, media_id: int, new_path: str | Path) -> None:
+        normalized = normalized_path(new_path)
+        path = Path(normalized)
+        device, inode, size, fingerprint = file_identity(path)
+        self.conn.execute(
+            """
+            UPDATE media
+            SET path = ?,
+                media_type = ?,
+                file_device = ?,
+                file_inode = ?,
+                file_size = ?,
+                fingerprint = ?
+            WHERE id = ?
+            """,
+            (
+                normalized,
+                detect_media_type(path),
+                device,
+                inode,
+                size,
+                fingerprint,
+                media_id,
+            ),
+        )
+        self.conn.commit()
+
+    def update_moved_path(self, old_path: str | Path, new_path: str | Path) -> int | None:
+        media_id = self.media_id_for_path(old_path)
+        if media_id is None:
+            return None
+        self.update_media_path(media_id, new_path)
+        return media_id
+
+    def update_moved_directory(
+        self,
+        old_dir: str | Path,
+        new_dir: str | Path,
+    ) -> list[int]:
+        old_prefix = normalized_path(old_dir).rstrip(os.sep) + os.sep
+        new_prefix = normalized_path(new_dir).rstrip(os.sep) + os.sep
+        rows = self.conn.execute(
+            "SELECT id, path FROM media WHERE path LIKE ?",
+            (old_prefix + "%",),
+        ).fetchall()
+
+        updated: list[int] = []
+        for row in rows:
+            old_path = str(row["path"])
+            suffix = old_path[len(old_prefix):]
+            new_path = new_prefix + suffix
+            self.update_media_path(int(row["id"]), new_path)
+            updated.append(int(row["id"]))
+        return updated
 
     def media_items(self, category_id: int | None = None, search: str = ""):
         query = """
@@ -383,6 +566,156 @@ class MediaListWidget(QListWidget):
         )
 
 
+class TrackerBridge(QObject):
+    moved = Signal(str, str, bool)
+    created = Signal(str)
+    deleted = Signal(str, bool)
+    recovered = Signal(int, str)
+    recoveryFinished = Signal(int)
+
+
+class TrackerEventHandler(FileSystemEventHandler):
+    def __init__(self, bridge: TrackerBridge):
+        super().__init__()
+        self.bridge = bridge
+
+    def on_moved(self, event) -> None:
+        self.bridge.moved.emit(
+            str(event.src_path),
+            str(event.dest_path),
+            bool(event.is_directory),
+        )
+
+    def on_created(self, event) -> None:
+        if not event.is_directory:
+            self.bridge.created.emit(str(event.src_path))
+
+    def on_deleted(self, event) -> None:
+        self.bridge.deleted.emit(str(event.src_path), bool(event.is_directory))
+
+
+def tracker_roots(paths: list[str]) -> list[Path]:
+    candidates = [Path.home()]
+    media_root = Path("/media") / Path.home().name
+    if media_root.exists():
+        candidates.append(media_root)
+    if Path("/mnt").exists():
+        candidates.append(Path("/mnt"))
+
+    for raw in paths:
+        parent = Path(raw).parent
+        if parent.exists():
+            candidates.append(parent)
+
+    roots: list[Path] = []
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if not resolved.is_dir():
+            continue
+        if any(resolved == root or root in resolved.parents for root in roots):
+            continue
+        roots = [
+            root for root in roots
+            if not (root == resolved or resolved in root.parents)
+        ]
+        roots.append(resolved)
+    return roots
+
+
+def recover_missing_files(
+    bridge: TrackerBridge,
+    missing_rows: list[dict],
+    roots: list[Path],
+) -> None:
+    if not missing_rows:
+        bridge.recoveryFinished.emit(0)
+        return
+
+    inode_targets: dict[tuple[int, int], int] = {}
+    fingerprint_targets: dict[tuple[int, str], int] = {}
+    unresolved: set[int] = set()
+
+    for row in missing_rows:
+        media_id = int(row["id"])
+        unresolved.add(media_id)
+        device = row.get("file_device")
+        inode = row.get("file_inode")
+        size = row.get("file_size")
+        fingerprint = row.get("fingerprint")
+
+        if device is not None and inode is not None:
+            inode_targets[(int(device), int(inode))] = media_id
+        if size is not None and fingerprint:
+            fingerprint_targets[(int(size), str(fingerprint))] = media_id
+
+    skip_dirs = {
+        ".cache",
+        ".git",
+        ".venv",
+        "__pycache__",
+        "node_modules",
+        "Trash",
+    }
+    recovered = 0
+
+    for root in roots:
+        if not unresolved:
+            break
+
+        try:
+            walker = os.walk(root, topdown=True, followlinks=False)
+            for dirpath, dirnames, filenames in walker:
+                dirnames[:] = [
+                    name for name in dirnames
+                    if name not in skip_dirs
+                ]
+
+                for filename in filenames:
+                    if not unresolved:
+                        break
+
+                    path = Path(dirpath) / filename
+                    if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                        continue
+
+                    try:
+                        stat = path.stat()
+                    except (OSError, PermissionError):
+                        continue
+
+                    media_id = inode_targets.get(
+                        (int(stat.st_dev), int(stat.st_ino))
+                    )
+
+                    if media_id is None and int(stat.st_size) > 0:
+                        possible = [
+                            (key, target_id)
+                            for key, target_id in fingerprint_targets.items()
+                            if key[0] == int(stat.st_size)
+                            and target_id in unresolved
+                        ]
+                        if possible:
+                            fingerprint = fingerprint_file(path)
+                            if fingerprint is not None:
+                                media_id = fingerprint_targets.get(
+                                    (int(stat.st_size), fingerprint)
+                                )
+
+                    if media_id is None or media_id not in unresolved:
+                        continue
+
+                    unresolved.remove(media_id)
+                    recovered += 1
+                    bridge.recovered.emit(media_id, str(path))
+        except (OSError, PermissionError):
+            continue
+
+    bridge.recoveryFinished.emit(recovered)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -391,6 +724,9 @@ class MainWindow(QMainWindow):
         self.current_movie: QMovie | None = None
         self.current_preview_path: Path | None = None
         self.current_preview_type: str | None = None
+        self.tracker_bridge = TrackerBridge()
+        self.tracker_observer: Observer | None = None
+        self.recovery_thread: threading.Thread | None = None
 
         self.setWindowTitle("MediaNotes")
         self.resize(1280, 820)
@@ -402,7 +738,124 @@ class MainWindow(QMainWindow):
 
         self.reload_categories()
         self.reload_media()
+        self._start_file_tracker()
+        self._start_missing_recovery()
         self.statusBar().showMessage("Připraveno", 2500)
+
+    def _start_file_tracker(self) -> None:
+        self.tracker_bridge.moved.connect(self._on_tracked_move)
+        self.tracker_bridge.created.connect(self._on_tracked_created)
+        self.tracker_bridge.deleted.connect(self._on_tracked_deleted)
+        self.tracker_bridge.recovered.connect(self._on_file_recovered)
+        self.tracker_bridge.recoveryFinished.connect(
+            self._on_recovery_finished
+        )
+
+        paths = [str(row["path"]) for row in self.db.tracked_media()]
+        observer = Observer()
+        handler = TrackerEventHandler(self.tracker_bridge)
+        scheduled = 0
+
+        for root in tracker_roots(paths):
+            try:
+                observer.schedule(handler, str(root), recursive=True)
+                scheduled += 1
+            except (OSError, PermissionError):
+                continue
+
+        if scheduled:
+            observer.start()
+            self.tracker_observer = observer
+
+    def _start_missing_recovery(self, only_media_id: int | None = None) -> None:
+        if self.recovery_thread is not None and self.recovery_thread.is_alive():
+            return
+
+        rows = self.db.missing_media()
+        if only_media_id is not None:
+            rows = [
+                row for row in rows
+                if int(row["id"]) == int(only_media_id)
+            ]
+        if not rows:
+            return
+
+        payload = [dict(row) for row in rows]
+        roots = tracker_roots(
+            [str(row["path"]) for row in self.db.tracked_media()]
+        )
+
+        self.recovery_thread = threading.Thread(
+            target=recover_missing_files,
+            args=(self.tracker_bridge, payload, roots),
+            daemon=True,
+            name="MediaNotesRecovery",
+        )
+        self.recovery_thread.start()
+
+    def _on_tracked_move(
+        self,
+        old_path: str,
+        new_path: str,
+        is_directory: bool,
+    ) -> None:
+        updated: list[int] = []
+        if is_directory:
+            updated = self.db.update_moved_directory(old_path, new_path)
+        else:
+            media_id = self.db.update_moved_path(old_path, new_path)
+            if media_id is not None:
+                updated = [media_id]
+
+        if not updated:
+            return
+
+        current = self.current_media_id
+        self.reload_categories(self.selected_category_id())
+        self.reload_media(select_media_id=current)
+        self.statusBar().showMessage(
+            "Sledovač aktualizoval cestu k médiu.",
+            4000,
+        )
+
+    def _on_tracked_created(self, path: str) -> None:
+        file_path = Path(path)
+        if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+            return
+
+    def _on_tracked_deleted(self, path: str, is_directory: bool) -> None:
+        if is_directory:
+            affected = [
+                row
+                for row in self.db.tracked_media()
+                if normalized_path(row["path"]).startswith(
+                    normalized_path(path).rstrip(os.sep) + os.sep
+                )
+            ]
+            if affected:
+                self._start_missing_recovery()
+            return
+
+        media_id = self.db.media_id_for_path(path)
+        if media_id is not None:
+            self._start_missing_recovery(media_id)
+
+    def _on_file_recovered(self, media_id: int, new_path: str) -> None:
+        self.db.update_media_path(media_id, new_path)
+        current = self.current_media_id
+        self.reload_categories(self.selected_category_id())
+        self.reload_media(select_media_id=current)
+        self.statusBar().showMessage(
+            f"Sledovač našel přesunutý soubor: {Path(new_path).name}",
+            5000,
+        )
+
+    def _on_recovery_finished(self, recovered: int) -> None:
+        if recovered:
+            self.statusBar().showMessage(
+                f"Sledovač opravil {recovered} přesunutých souborů.",
+                5000,
+            )
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -994,6 +1447,7 @@ class MainWindow(QMainWindow):
 
         self.reload_categories(category_id)
         self.reload_media()
+        self._restart_file_tracker()
 
         parts = []
         if added:
@@ -1394,6 +1848,20 @@ class MainWindow(QMainWindow):
             return
 
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def _restart_file_tracker(self) -> None:
+        if self.tracker_observer is not None:
+            self.tracker_observer.stop()
+            self.tracker_observer.join(timeout=2)
+            self.tracker_observer = None
+        self._start_file_tracker()
+
+    def closeEvent(self, event) -> None:
+        if self.tracker_observer is not None:
+            self.tracker_observer.stop()
+            self.tracker_observer.join(timeout=2)
+            self.tracker_observer = None
+        super().closeEvent(event)
 
     def clear_detail(self) -> None:
         self.current_media_id = None
