@@ -2297,7 +2297,10 @@ class MainWindow(QMainWindow):
             self._refresh_video_poster()
 
     def save_current(self) -> None:
-        if self.current_media_id is None or not self.save_btn.isEnabled():
+        if (
+            self.current_media_id is None
+            or not bool(self.save_btn.property("dirty"))
+        ):
             return
 
         category_id = self.category_combo.currentData()
