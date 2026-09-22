@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.7.1"
+APP_VERSION = "0.7.2"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -524,6 +524,7 @@ class Database:
         self,
         media_id: int,
         caption: str,
+        notes: str,
         category_id: int,
         rating: int,
     ) -> None:
@@ -531,17 +532,10 @@ class Database:
         self.conn.execute(
             """
             UPDATE media
-            SET caption = ?, category_id = ?, rating = ?
+            SET caption = ?, notes = ?, category_id = ?, rating = ?
             WHERE id = ?
             """,
-            (caption, category_id, rating, media_id),
-        )
-        self.conn.commit()
-
-    def update_media_note(self, media_id: int, notes: str) -> None:
-        self.conn.execute(
-            "UPDATE media SET notes = ? WHERE id = ?",
-            (notes, media_id),
+            (caption, notes, category_id, rating, media_id),
         )
         self.conn.commit()
 
@@ -1139,6 +1133,17 @@ class NotebookDialog(QDialog):
             event.ignore()
 
 
+class GuardedNoteEdit(QTextEdit):
+    editRequested = Signal()
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if self.isReadOnly():
+            self.editRequested.emit()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+
 class CategoryDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index) -> None:
         super().paint(painter, option, index)
@@ -1165,9 +1170,7 @@ class MainWindow(QMainWindow):
         self.current_preview_path: Path | None = None
         self.current_preview_type: str | None = None
         self.current_rating = 0
-        self.loaded_detail_state: tuple[str, int, int] | None = None
-        self.loaded_note_text = ""
-        self.note_editing = False
+        self.loaded_detail_state: tuple[str, str, int, int] | None = None
         self.loading_detail = False
         self.thumbnail_mode = "medium"
         self.save_feedback_active = False
@@ -1539,40 +1542,13 @@ class MainWindow(QMainWindow):
 
         self.media_player.setVideoOutput(self.video_widget)
 
-        note_header = QHBoxLayout()
-        note_header.setSpacing(4)
-
-        note_label = QLabel("Poznámka")
-        note_label.setObjectName("fieldLabel")
-        note_header.addWidget(note_label)
-        note_header.addStretch()
-
-        self.note_edit_btn = QPushButton("✎")
-        self.note_edit_btn.setObjectName("noteToolButton")
-        self.note_edit_btn.setToolTip("Editovat poznámku")
-        self.note_edit_btn.setFixedSize(30, 28)
-        self.note_edit_btn.setEnabled(False)
-        note_header.addWidget(self.note_edit_btn)
-
-        self.note_save_btn = QPushButton()
-        self.note_save_btn.setObjectName("noteSaveButton")
-        self.note_save_btn.setIcon(
-            self.style().standardIcon(QStyle.SP_DialogSaveButton)
-        )
-        self.note_save_btn.setToolTip("Uložit poznámku")
-        self.note_save_btn.setFixedSize(32, 28)
-        self.note_save_btn.setEnabled(False)
-        note_header.addWidget(self.note_save_btn)
-
-        detail_layout.addLayout(note_header)
-
-        self.notes_edit = QTextEdit()
+        self.notes_edit = GuardedNoteEdit()
         self.notes_edit.setObjectName("previewNote")
         self.notes_edit.setPlaceholderText("Poznámka k tomuto médiu…")
         self.notes_edit.setMinimumHeight(72)
         self.notes_edit.setMaximumHeight(110)
         self.notes_edit.setReadOnly(True)
-        self.notes_edit.setProperty("editing", False)
+        self.notes_edit.setToolTip("Dvojklikem upravit poznámku")
         detail_layout.addWidget(self.notes_edit)
 
         preview_actions = QHBoxLayout()
@@ -1700,10 +1676,9 @@ class MainWindow(QMainWindow):
         )
 
         self.caption_edit.textChanged.connect(self._on_detail_edited)
+        self.notes_edit.textChanged.connect(self._on_detail_edited)
+        self.notes_edit.editRequested.connect(self._enable_note_editing)
         self.category_combo.currentIndexChanged.connect(self._on_detail_edited)
-        self.notes_edit.textChanged.connect(self._on_note_changed)
-        self.note_edit_btn.clicked.connect(self.start_note_editing)
-        self.note_save_btn.clicked.connect(self.save_media_note)
 
         self.save_btn.clicked.connect(self.save_current)
         self.delete_media_btn.clicked.connect(self.delete_selected_media)
@@ -1797,49 +1772,17 @@ class MainWindow(QMainWindow):
             }
 
             QTextEdit#previewNote {
-                background: #f3f5f7;
-                color: #3f4852;
-                border: 1px solid #e0e4e9;
-                border-radius: 6px;
-                padding: 6px;
-            }
-
-            QTextEdit#previewNote[editing="true"] {
-                background: #ffffff;
+                background: #f6f7f9;
                 color: #20242a;
-                border: 1px solid #7fa3dc;
+                border: none;
+                border-top: 1px solid #dfe4e8;
+                border-radius: 4px;
+                padding: 5px;
             }
 
-            QPushButton#noteToolButton,
-            QPushButton#noteSaveButton {
-                padding: 2px;
-                border-radius: 6px;
-            }
-
-            QPushButton#noteToolButton {
-                background: #ffffff;
-                color: #34404c;
-                border: 1px solid #cfd5dc;
-                font-size: 16px;
-            }
-
-            QPushButton#noteToolButton:hover {
-                background: #eef1f4;
-            }
-
-            QPushButton#noteSaveButton {
-                background: #2e9b55;
-                border: 1px solid #2e9b55;
-            }
-
-            QPushButton#noteSaveButton:hover {
-                background: #27874a;
-                border-color: #27874a;
-            }
-
-            QPushButton#noteSaveButton:disabled {
-                background: #e7eaee;
-                border-color: #d9dee5;
+            QTextEdit#previewNote:focus {
+                border: none;
+                border-top: 1px solid #6d9ee8;
             }
 
             QLineEdit,
@@ -2681,14 +2624,8 @@ class MainWindow(QMainWindow):
         try:
             self.current_media_id = int(row["id"])
             self.caption_edit.setText(row["caption"])
-            self.loaded_note_text = str(row["notes"])
-            self.note_editing = False
             self.notes_edit.setReadOnly(True)
-            self.notes_edit.setProperty("editing", False)
-            self.notes_edit.setPlainText(self.loaded_note_text)
-            self.note_edit_btn.setEnabled(True)
-            self.note_save_btn.setEnabled(False)
-            self._repolish_note_editor()
+            self.notes_edit.setPlainText(row["notes"])
 
             combo_index = self.category_combo.findData(int(row["category_id"]))
             if combo_index >= 0:
@@ -2701,6 +2638,7 @@ class MainWindow(QMainWindow):
 
             self.loaded_detail_state = (
                 str(row["caption"]),
+                str(row["notes"]),
                 int(row["category_id"]),
                 self.current_rating,
             )
@@ -2714,7 +2652,7 @@ class MainWindow(QMainWindow):
 
         self._update_save_button_state()
 
-    def _current_detail_state(self) -> tuple[str, int, int] | None:
+    def _current_detail_state(self) -> tuple[str, str, int, int] | None:
         if self.current_media_id is None:
             return None
 
@@ -2724,50 +2662,17 @@ class MainWindow(QMainWindow):
 
         return (
             self.caption_edit.text(),
+            self.notes_edit.toPlainText(),
             int(category_id),
             int(self.current_rating),
         )
 
-    def _repolish_note_editor(self) -> None:
-        self.notes_edit.style().unpolish(self.notes_edit)
-        self.notes_edit.style().polish(self.notes_edit)
-        self.notes_edit.update()
-
-    def start_note_editing(self) -> None:
-        if self.current_media_id is None or self.note_editing:
+    def _enable_note_editing(self) -> None:
+        if self.current_media_id is None:
             return
-
-        self.note_editing = True
         self.notes_edit.setReadOnly(False)
-        self.notes_edit.setProperty("editing", True)
-        self.note_edit_btn.setEnabled(False)
-        self.note_save_btn.setEnabled(
-            self.notes_edit.toPlainText() != self.loaded_note_text
-        )
-        self._repolish_note_editor()
+        self.notes_edit.setToolTip("Poznámku právě upravuješ")
         self.notes_edit.setFocus()
-
-    def _on_note_changed(self) -> None:
-        if self.loading_detail:
-            return
-        dirty = self.notes_edit.toPlainText() != self.loaded_note_text
-        self.note_save_btn.setEnabled(self.note_editing and dirty)
-
-    def save_media_note(self) -> None:
-        if self.current_media_id is None or not self.note_editing:
-            return
-
-        content = self.notes_edit.toPlainText()
-        self.db.update_media_note(self.current_media_id, content)
-        self.loaded_note_text = content
-
-        self.note_editing = False
-        self.notes_edit.setReadOnly(True)
-        self.notes_edit.setProperty("editing", False)
-        self.note_edit_btn.setEnabled(True)
-        self.note_save_btn.setEnabled(False)
-        self._repolish_note_editor()
-        self.statusBar().showMessage("Poznámka uložena.", 2500)
 
     def set_rating(self, rating: int) -> None:
         if self.current_media_id is None:
@@ -3005,10 +2910,12 @@ class MainWindow(QMainWindow):
         media_id = self.current_media_id
         selected_category = self.selected_category_id()
         caption = self.caption_edit.text()
+        notes = self.notes_edit.toPlainText()
 
         self.db.update_media(
             media_id,
             caption.strip(),
+            notes.strip(),
             int(category_id),
             int(self.current_rating),
         )
@@ -3020,8 +2927,11 @@ class MainWindow(QMainWindow):
         if row is not None:
             self.current_rating = max(0, min(3, int(row["rating"] or 0)))
             self._refresh_rating_buttons()
+            self.notes_edit.setReadOnly(True)
+            self.notes_edit.setToolTip("Dvojklikem upravit poznámku")
             self.loaded_detail_state = (
                 str(row["caption"]),
+                str(row["notes"]),
                 int(row["category_id"]),
                 self.current_rating,
             )
@@ -3174,8 +3084,6 @@ class MainWindow(QMainWindow):
         self.current_preview_type = None
         self.current_rating = 0
         self.loaded_detail_state = None
-        self.loaded_note_text = ""
-        self.note_editing = False
         self.save_feedback_active = False
 
         if self.current_movie is not None:
@@ -3189,14 +3097,10 @@ class MainWindow(QMainWindow):
         try:
             self.caption_edit.clear()
             self.notes_edit.setReadOnly(True)
-            self.notes_edit.setProperty("editing", False)
+            self.notes_edit.setToolTip("Dvojklikem upravit poznámku")
             self.notes_edit.clear()
         finally:
             self.loading_detail = False
-
-        self.note_edit_btn.setEnabled(False)
-        self.note_save_btn.setEnabled(False)
-        self._repolish_note_editor()
 
         self._refresh_rating_buttons()
         for button in self.rating_buttons:
