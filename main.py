@@ -727,6 +727,7 @@ class MainWindow(QMainWindow):
         self.tracker_bridge = TrackerBridge()
         self.tracker_observer: Observer | None = None
         self.recovery_thread: threading.Thread | None = None
+        self.tracker_signals_connected = False
 
         self.setWindowTitle("MediaNotes")
         self.resize(1280, 820)
@@ -743,13 +744,15 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Připraveno", 2500)
 
     def _start_file_tracker(self) -> None:
-        self.tracker_bridge.moved.connect(self._on_tracked_move)
-        self.tracker_bridge.created.connect(self._on_tracked_created)
-        self.tracker_bridge.deleted.connect(self._on_tracked_deleted)
-        self.tracker_bridge.recovered.connect(self._on_file_recovered)
-        self.tracker_bridge.recoveryFinished.connect(
-            self._on_recovery_finished
-        )
+        if not self.tracker_signals_connected:
+            self.tracker_bridge.moved.connect(self._on_tracked_move)
+            self.tracker_bridge.created.connect(self._on_tracked_created)
+            self.tracker_bridge.deleted.connect(self._on_tracked_deleted)
+            self.tracker_bridge.recovered.connect(self._on_file_recovered)
+            self.tracker_bridge.recoveryFinished.connect(
+                self._on_recovery_finished
+            )
+            self.tracker_signals_connected = True
 
         paths = [str(row["path"]) for row in self.db.tracked_media()]
         observer = Observer()
