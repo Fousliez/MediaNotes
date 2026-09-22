@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.6.9"
+APP_VERSION = "0.7.0"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1429,13 +1429,8 @@ class MainWindow(QMainWindow):
         sidebar_layout.addLayout(category_buttons)
         splitter.addWidget(sidebar)
 
-        right_splitter = QSplitter(Qt.Vertical)
-        right_splitter.setChildrenCollapsible(False)
-        right_splitter.setHandleWidth(1)
-
         media_panel = QFrame()
         media_panel.setObjectName("panel")
-        media_panel.setMinimumHeight(190)
         media_layout = QVBoxLayout(media_panel)
         media_layout.setContentsMargins(6, 5, 4, 4)
         media_layout.setSpacing(3)
@@ -1502,46 +1497,49 @@ class MainWindow(QMainWindow):
         media_header_separator.setFixedHeight(1)
         media_layout.addWidget(media_header_separator)
 
+        content_splitter = QSplitter(Qt.Horizontal)
+        content_splitter.setChildrenCollapsible(False)
+        content_splitter.setHandleWidth(1)
+        media_layout.addWidget(content_splitter, 1)
+
         self.media_list = MediaListWidget()
         self.media_list.setContextMenuPolicy(Qt.CustomContextMenu)
-        media_layout.addWidget(self.media_list, 1)
-        right_splitter.addWidget(media_panel)
+        content_splitter.addWidget(self.media_list)
 
         detail = QFrame()
         detail.setObjectName("detailCard")
-        detail_layout = QHBoxLayout(detail)
-        detail_layout.setContentsMargins(6, 5, 4, 4)
-        detail_layout.setSpacing(8)
-
-        preview_side = QVBoxLayout()
-        preview_side.setSpacing(4)
+        detail.setMinimumWidth(330)
+        detail_layout = QVBoxLayout(detail)
+        detail_layout.setContentsMargins(8, 6, 6, 6)
+        detail_layout.setSpacing(5)
 
         self.preview_stack = QStackedWidget()
 
         self.preview = QLabel("Vyber médium")
         self.preview.setObjectName("preview")
         self.preview.setAlignment(Qt.AlignCenter)
-        self.preview.setMinimumSize(370, 215)
+        self.preview.setMinimumSize(320, 190)
 
         self.video_widget = QVideoWidget()
-        self.video_widget.setMinimumSize(370, 215)
+        self.video_widget.setMinimumSize(320, 190)
         self.video_widget.setStyleSheet("background: #000000;")
 
         self.preview_stack.addWidget(self.preview)
         self.preview_stack.addWidget(self.video_widget)
         self.preview_stack.setCurrentWidget(self.preview)
-        preview_side.addWidget(self.preview_stack, 1)
+        detail_layout.addWidget(self.preview_stack, 1)
 
         self.media_player.setVideoOutput(self.video_widget)
 
         self.notes_edit = QTextEdit()
         self.notes_edit.setObjectName("previewNote")
         self.notes_edit.setPlaceholderText("Poznámka k tomuto médiu…")
-        self.notes_edit.setMinimumHeight(58)
-        self.notes_edit.setMaximumHeight(90)
-        preview_side.addWidget(self.notes_edit)
+        self.notes_edit.setMinimumHeight(72)
+        self.notes_edit.setMaximumHeight(110)
+        detail_layout.addWidget(self.notes_edit)
 
         preview_actions = QHBoxLayout()
+        preview_actions.setSpacing(4)
 
         self.play_pause_btn = QPushButton("▶ Přehrát")
         self.play_pause_btn.setEnabled(False)
@@ -1562,29 +1560,31 @@ class MainWindow(QMainWindow):
         preview_actions.addWidget(self.open_path_btn)
 
         preview_actions.addStretch()
-        preview_side.addLayout(preview_actions)
+        detail_layout.addLayout(preview_actions)
 
-        detail_layout.addLayout(preview_side, 3)
-
-        form_side = QVBoxLayout()
-        form_side.setSpacing(4)
+        detail_separator = QFrame()
+        detail_separator.setObjectName("detailSeparator")
+        detail_separator.setFrameShape(QFrame.HLine)
+        detail_separator.setFrameShadow(QFrame.Plain)
+        detail_separator.setFixedHeight(1)
+        detail_layout.addWidget(detail_separator)
 
         caption_label = QLabel("Krátký popisek")
         caption_label.setObjectName("fieldLabel")
-        form_side.addWidget(caption_label)
+        detail_layout.addWidget(caption_label)
 
         self.caption_edit = QLineEdit()
         self.caption_edit.setPlaceholderText(
             "Např. nejlepší moment, reakce, nápad, připomínka…"
         )
-        form_side.addWidget(self.caption_edit)
+        detail_layout.addWidget(self.caption_edit)
 
         category_label = QLabel("Kategorie")
         category_label.setObjectName("fieldLabel")
-        form_side.addWidget(category_label)
+        detail_layout.addWidget(category_label)
 
         self.category_combo = QComboBox()
-        form_side.addWidget(self.category_combo)
+        detail_layout.addWidget(self.category_combo)
 
         rating_row = QHBoxLayout()
         rating_row.setSpacing(3)
@@ -1607,9 +1607,7 @@ class MainWindow(QMainWindow):
             rating_row.addWidget(button)
 
         rating_row.addStretch()
-        form_side.addLayout(rating_row)
-
-        form_side.addStretch()
+        detail_layout.addLayout(rating_row)
 
         buttons = QHBoxLayout()
         self.save_btn = QPushButton("Uložit změny")
@@ -1623,13 +1621,12 @@ class MainWindow(QMainWindow):
         self.delete_media_btn.setObjectName("dangerButton")
         buttons.addWidget(self.delete_media_btn)
 
-        form_side.addLayout(buttons)
-        detail_layout.addLayout(form_side, 2)
+        detail_layout.addLayout(buttons)
 
-        right_splitter.addWidget(detail)
-        right_splitter.setSizes([560, 240])
+        content_splitter.addWidget(detail)
+        content_splitter.setSizes([700, 380])
 
-        splitter.addWidget(right_splitter)
+        splitter.addWidget(media_panel)
         splitter.setSizes([195, 1085])
 
         self.notebook_btn.clicked.connect(self.open_notebook)
@@ -1722,7 +1719,8 @@ class MainWindow(QMainWindow):
             }
 
             QFrame#mediaHeaderSeparator,
-            QFrame#sidebarSeparator {
+            QFrame#sidebarSeparator,
+            QFrame#detailSeparator {
                 background: #d9dee5;
                 border: none;
             }
