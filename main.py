@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QComboBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -49,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.5.6"
+APP_VERSION = "0.6.0"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -183,6 +184,12 @@ class Database:
 
             CREATE INDEX IF NOT EXISTS idx_media_category
             ON media(category_id);
+
+            CREATE TABLE IF NOT EXISTS notebook (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                content TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
             """
         )
         self.conn.commit()
@@ -549,6 +556,25 @@ class Database:
         self.conn.execute(
             f"DELETE FROM media WHERE id IN ({placeholders})",
             media_ids,
+        )
+        self.conn.commit()
+
+    def notebook_content(self) -> str:
+        row = self.conn.execute(
+            "SELECT content FROM notebook WHERE id = 1"
+        ).fetchone()
+        return "" if row is None else str(row["content"])
+
+    def save_notebook(self, content: str) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO notebook(id, content, updated_at)
+            VALUES (1, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+                content = excluded.content,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (content,),
         )
         self.conn.commit()
 
@@ -926,6 +952,126 @@ def recover_missing_files(
     bridge.recoveryFinished.emit(recovered)
 
 
+class NotebookDialog(QDialog):
+    def __init__(self, db: Database, parent=None):
+        super().__init__(parent)
+        self.db = db
+        self.saved_content = self.db.notebook_content()
+        self.saved_feedback_active = False
+
+        self.setWindowTitle("Sešit")
+        self.resize(760, 560)
+        self.setMinimumSize(520, 360)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 10)
+        layout.setSpacing(8)
+
+        heading = QLabel("Sešit")
+        heading.setObjectName("notebookTitle")
+        layout.addWidget(heading)
+
+        hint = QLabel("Volný dokument pro poznámky, nápady a texty.")
+        hint.setObjectName("mutedLabel")
+        layout.addWidget(hint)
+
+        self.editor = QTextEdit()
+        self.editor.setObjectName("notebookEditor")
+        self.editor.setPlaceholderText("Začni psát…")
+        self.editor.setPlainText(self.saved_content)
+        layout.addWidget(self.editor, 1)
+
+        footer = QHBoxLayout()
+        self.status_label = QLabel("")
+        self.status_label.setObjectName("mutedLabel")
+        footer.addWidget(self.status_label)
+        footer.addStretch()
+
+        self.save_btn = QPushButton("Uložit")
+        self.save_btn.setObjectName("notebookSaveButton")
+        self.save_btn.setEnabled(False)
+        self.save_btn.setProperty("dirty", False)
+        self.save_btn.setProperty("saved", False)
+        footer.addWidget(self.save_btn)
+        layout.addLayout(footer)
+
+        self.editor.textChanged.connect(self._on_changed)
+        self.save_btn.clicked.connect(self.save)
+
+        self.shortcut_save = QShortcut(QKeySequence("Ctrl+S"), self)
+        self.shortcut_save.activated.connect(self.save)
+
+    def _repolish_button(self) -> None:
+        self.save_btn.style().unpolish(self.save_btn)
+        self.save_btn.style().polish(self.save_btn)
+        self.save_btn.update()
+
+    def _is_dirty(self) -> bool:
+        return self.editor.toPlainText() != self.saved_content
+
+    def _on_changed(self) -> None:
+        self.saved_feedback_active = False
+        dirty = self._is_dirty()
+        self.save_btn.setProperty("saved", False)
+        self.save_btn.setProperty("dirty", dirty)
+        self.save_btn.setText("Uložit")
+        self.save_btn.setEnabled(dirty)
+        self.status_label.setText("Neuložené změny" if dirty else "")
+        self._repolish_button()
+
+    def save(self) -> None:
+        if not self._is_dirty():
+            return
+
+        content = self.editor.toPlainText()
+        self.db.save_notebook(content)
+        self.saved_content = content
+
+        self.saved_feedback_active = True
+        self.save_btn.setProperty("dirty", False)
+        self.save_btn.setProperty("saved", True)
+        self.save_btn.setText("✓ Uloženo")
+        self.save_btn.setEnabled(True)
+        self.status_label.setText("Uloženo")
+        self._repolish_button()
+        QTimer.singleShot(1100, self._finish_saved_feedback)
+
+    def _finish_saved_feedback(self) -> None:
+        if not self.saved_feedback_active:
+            return
+        self.saved_feedback_active = False
+        self.save_btn.setProperty("saved", False)
+        self.save_btn.setText("Uložit")
+        self.save_btn.setEnabled(False)
+        self.status_label.setText("")
+        self._repolish_button()
+
+    def closeEvent(self, event) -> None:
+        if not self._is_dirty():
+            event.accept()
+            return
+
+        answer = QMessageBox.warning(
+            self,
+            "Neuložené změny",
+            "V sešitu jsou neuložené změny.",
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Save,
+        )
+
+        if answer == QMessageBox.Save:
+            self.save()
+            event.accept()
+        elif answer == QMessageBox.Discard:
+            self.editor.blockSignals(True)
+            self.editor.setPlainText(self.saved_content)
+            self.editor.blockSignals(False)
+            self._on_changed()
+            event.accept()
+        else:
+            event.ignore()
+
+
 class CategoryDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index) -> None:
         super().paint(painter, option, index)
@@ -956,6 +1102,7 @@ class MainWindow(QMainWindow):
         self.loading_detail = False
         self.thumbnail_mode = "medium"
         self.save_feedback_active = False
+        self.notebook_dialog: NotebookDialog | None = None
 
         self.audio_output = QAudioOutput(self)
         self.audio_output.setMuted(False)
@@ -1174,6 +1321,18 @@ class MainWindow(QMainWindow):
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(3, 5, 5, 4)
         sidebar_layout.setSpacing(3)
+
+        self.notebook_btn = QPushButton("✎  Sešit")
+        self.notebook_btn.setObjectName("notebookButton")
+        self.notebook_btn.setToolTip("Otevřít samostatný sešit poznámek")
+        sidebar_layout.addWidget(self.notebook_btn)
+
+        notebook_separator = QFrame()
+        notebook_separator.setObjectName("sidebarSeparator")
+        notebook_separator.setFrameShape(QFrame.HLine)
+        notebook_separator.setFrameShadow(QFrame.Plain)
+        notebook_separator.setFixedHeight(1)
+        sidebar_layout.addWidget(notebook_separator)
 
         sidebar_header = QHBoxLayout()
         category_heading = QLabel("Kategorie")
@@ -1424,6 +1583,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(right_splitter)
         splitter.setSizes([195, 1085])
 
+        self.notebook_btn.clicked.connect(self.open_notebook)
         self.add_category_btn.clicked.connect(self.add_category)
         self.rename_category_btn.clicked.connect(self.rename_category)
         self.delete_category_btn.clicked.connect(self.delete_category)
@@ -1473,6 +1633,15 @@ class MainWindow(QMainWindow):
             self._on_video_media_status_changed
         )
 
+    def open_notebook(self) -> None:
+        if self.notebook_dialog is None:
+            self.notebook_dialog = NotebookDialog(self.db, self)
+
+        self.notebook_dialog.show()
+        self.notebook_dialog.raise_()
+        self.notebook_dialog.activateWindow()
+        self.notebook_dialog.editor.setFocus()
+
     def _apply_style(self) -> None:
         self.setStyleSheet(
             """
@@ -1503,7 +1672,8 @@ class MainWindow(QMainWindow):
                 border-radius: 0;
             }
 
-            QFrame#mediaHeaderSeparator {
+            QFrame#mediaHeaderSeparator,
+            QFrame#sidebarSeparator {
                 background: #d9dee5;
                 border: none;
             }
@@ -1702,6 +1872,59 @@ class MainWindow(QMainWindow):
 
             QPushButton#primaryButton:hover {
                 background: #3978e5;
+            }
+
+            QPushButton#notebookButton {
+                background: #eef1f4;
+                color: #27313c;
+                border: 1px solid #d9dee5;
+                border-radius: 7px;
+                padding: 6px 9px;
+                text-align: left;
+                font-weight: 600;
+            }
+
+            QPushButton#notebookButton:hover {
+                background: #e5eaf0;
+            }
+
+            QLabel#notebookTitle {
+                font-size: 18px;
+                font-weight: 700;
+                color: #20242a;
+            }
+
+            QTextEdit#notebookEditor {
+                background: #ffffff;
+                color: #20242a;
+                border: 1px solid #d7dce2;
+                border-radius: 8px;
+                padding: 10px;
+                font-size: 14px;
+            }
+
+            QTextEdit#notebookEditor:focus {
+                border: 1px solid #8aabe0;
+            }
+
+            QPushButton#notebookSaveButton {
+                background: #f2f4f6;
+                color: #9aa2ab;
+                border-color: #dfe3e7;
+                font-weight: 600;
+                min-width: 92px;
+            }
+
+            QPushButton#notebookSaveButton[dirty="true"] {
+                background: #2d6cdf;
+                color: #ffffff;
+                border-color: #2d6cdf;
+            }
+
+            QPushButton#notebookSaveButton[saved="true"] {
+                background: #2e9b55;
+                color: #ffffff;
+                border-color: #2e9b55;
             }
 
             QPushButton#saveButton {
