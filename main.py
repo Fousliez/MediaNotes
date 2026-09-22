@@ -2234,7 +2234,7 @@ class MainWindow(QMainWindow):
 
         self._update_save_button_state()
 
-    def _current_detail_state(self) -> tuple[str, str, int] | None:
+    def _current_detail_state(self) -> tuple[str, str, int, int] | None:
         if self.current_media_id is None:
             return None
 
