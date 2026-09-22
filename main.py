@@ -49,7 +49,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.5.3"
+APP_VERSION = "0.5.4"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1169,6 +1169,7 @@ class MainWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(1)
         root_layout.addWidget(splitter, 1)
 
         sidebar = QFrame()
@@ -1227,6 +1228,7 @@ class MainWindow(QMainWindow):
 
         right_splitter = QSplitter(Qt.Vertical)
         right_splitter.setChildrenCollapsible(False)
+        right_splitter.setHandleWidth(1)
 
         media_panel = QFrame()
         media_panel.setObjectName("panel")
@@ -1477,10 +1479,20 @@ class MainWindow(QMainWindow):
                 background: #ffffff;
             }
 
-            QFrame#sidebar,
-            QFrame#panel,
-            QFrame#detailCard {
+            QFrame#sidebar {
+                background: #f4f6f8;
+                border: none;
+                border-radius: 0;
+            }
+
+            QFrame#panel {
                 background: #ffffff;
+                border: none;
+                border-radius: 0;
+            }
+
+            QFrame#detailCard {
+                background: #f8f9fb;
                 border: none;
                 border-radius: 0;
             }
@@ -1568,12 +1580,13 @@ class MainWindow(QMainWindow):
             }
 
             QListWidget#categoryList::item:selected {
-                background: #dbe8fb;
+                background: #d6e4f7;
                 color: #172033;
+                font-weight: 600;
             }
 
             QListWidget#categoryList::item:hover:!selected {
-                background: #f0f3f6;
+                background: #e9edf2;
             }
 
             QListWidget#mediaList {
@@ -1713,7 +1726,7 @@ class MainWindow(QMainWindow):
             }
 
             QSplitter::handle {
-                background: #d9dee5;
+                background: #d7dce2;
             }
 
             QSplitter::handle:horizontal {
