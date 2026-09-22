@@ -49,7 +49,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.4.8"
+APP_VERSION = "0.5.0"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -172,6 +172,7 @@ class Database:
                 category_id INTEGER NOT NULL,
                 caption TEXT NOT NULL DEFAULT '',
                 notes TEXT NOT NULL DEFAULT '',
+                rating INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 file_device INTEGER,
                 file_inode INTEGER,
@@ -200,6 +201,11 @@ class Database:
             row["name"]
             for row in self.conn.execute("PRAGMA table_info(media)").fetchall()
         }
+        if "rating" not in media_columns:
+            self.conn.execute(
+                "ALTER TABLE media ADD COLUMN rating INTEGER NOT NULL DEFAULT 0"
+            )
+
         identity_columns = {
             "file_device": "INTEGER",
             "file_inode": "INTEGER",
@@ -468,7 +474,13 @@ class Database:
             updated.append(int(row["id"]))
         return updated
 
-    def media_items(self, category_id: int | None = None, search: str = ""):
+    def media_items(
+        self,
+        category_id: int | None = None,
+        search: str = "",
+        media_type: str | None = None,
+        sort_mode: str = "newest",
+    ):
         query = """
             SELECT m.*, c.name AS category_name
             FROM media m
@@ -480,6 +492,10 @@ class Database:
         if category_id is not None:
             query += " AND m.category_id = ?"
             params.append(category_id)
+
+        if media_type:
+            query += " AND m.media_type = ?"
+            params.append(media_type)
 
         if search.strip():
             needle = f"%{search.strip()}%"
@@ -493,7 +509,21 @@ class Database:
             """
             params.extend([needle, needle, needle, needle])
 
-        query += " ORDER BY m.id DESC"
+        order_by = {
+            "oldest": "m.id ASC",
+            "name_asc": (
+                "CASE WHEN TRIM(m.caption) = '' THEN m.path ELSE m.caption END "
+                "COLLATE NOCASE ASC, m.id DESC"
+            ),
+            "name_desc": (
+                "CASE WHEN TRIM(m.caption) = '' THEN m.path ELSE m.caption END "
+                "COLLATE NOCASE DESC, m.id DESC"
+            ),
+            "rating": "m.rating DESC, m.id DESC",
+            "newest": "m.id DESC",
+        }.get(sort_mode, "m.id DESC")
+
+        query += f" ORDER BY {order_by}"
         return self.conn.execute(query, params).fetchall()
 
     def media_by_id(self, media_id: int):
@@ -513,14 +543,16 @@ class Database:
         caption: str,
         notes: str,
         category_id: int,
+        rating: int,
     ) -> None:
+        rating = max(0, min(3, int(rating)))
         self.conn.execute(
             """
             UPDATE media
-            SET caption = ?, notes = ?, category_id = ?
+            SET caption = ?, notes = ?, category_id = ?, rating = ?
             WHERE id = ?
             """,
-            (caption, notes, category_id, media_id),
+            (caption, notes, category_id, rating, media_id),
         )
         self.conn.commit()
 
@@ -943,8 +975,10 @@ class MainWindow(QMainWindow):
         self.current_movie: QMovie | None = None
         self.current_preview_path: Path | None = None
         self.current_preview_type: str | None = None
-        self.loaded_detail_state: tuple[str, str, int] | None = None
+        self.current_rating = 0
+        self.loaded_detail_state: tuple[str, str, int, int] | None = None
         self.loading_detail = False
+        self.thumbnail_mode = "medium"
         self.save_feedback_active = False
 
         self.audio_output = QAudioOutput(self)
@@ -1239,9 +1273,33 @@ class MainWindow(QMainWindow):
         media_header.addWidget(self.media_count_label)
         media_header.addStretch()
 
-        drop_hint = QLabel("Tip: soubory můžeš sem rovnou přetáhnout")
-        drop_hint.setObjectName("mutedLabel")
-        media_header.addWidget(drop_hint)
+        self.type_filter_combo = QComboBox()
+        self.type_filter_combo.setToolTip("Filtrovat podle typu média")
+        self.type_filter_combo.addItem("Všechny typy", None)
+        self.type_filter_combo.addItem("Obrázky", "image")
+        self.type_filter_combo.addItem("GIFy", "gif")
+        self.type_filter_combo.addItem("Videa", "video")
+        self.type_filter_combo.setFixedWidth(112)
+        media_header.addWidget(self.type_filter_combo)
+
+        self.sort_combo = QComboBox()
+        self.sort_combo.setToolTip("Řazení galerie")
+        self.sort_combo.addItem("Nejnovější", "newest")
+        self.sort_combo.addItem("Nejstarší", "oldest")
+        self.sort_combo.addItem("Název A–Z", "name_asc")
+        self.sort_combo.addItem("Název Z–A", "name_desc")
+        self.sort_combo.addItem("Hodnocení", "rating")
+        self.sort_combo.setFixedWidth(118)
+        media_header.addWidget(self.sort_combo)
+
+        self.thumbnail_combo = QComboBox()
+        self.thumbnail_combo.setToolTip("Velikost náhledů")
+        self.thumbnail_combo.addItem("Malé náhledy", "small")
+        self.thumbnail_combo.addItem("Střední náhledy", "medium")
+        self.thumbnail_combo.addItem("Velké náhledy", "large")
+        self.thumbnail_combo.setCurrentIndex(1)
+        self.thumbnail_combo.setFixedWidth(132)
+        media_header.addWidget(self.thumbnail_combo)
 
         media_layout.addLayout(media_header)
 
@@ -1328,6 +1386,29 @@ class MainWindow(QMainWindow):
         self.category_combo = QComboBox()
         form_side.addWidget(self.category_combo)
 
+        rating_row = QHBoxLayout()
+        rating_row.setSpacing(3)
+
+        rating_label = QLabel("Hodnocení")
+        rating_label.setObjectName("fieldLabel")
+        rating_row.addWidget(rating_label)
+
+        self.rating_buttons: list[QPushButton] = []
+        for value in (1, 2, 3):
+            button = QPushButton("★")
+            button.setObjectName("ratingButton")
+            button.setProperty("active", False)
+            button.setFixedSize(29, 27)
+            button.setToolTip(f"{value} hvězda" if value == 1 else f"{value} hvězdy")
+            button.clicked.connect(
+                lambda _checked=False, rating=value: self.set_rating(rating)
+            )
+            self.rating_buttons.append(button)
+            rating_row.addWidget(button)
+
+        rating_row.addStretch()
+        form_side.addLayout(rating_row)
+
         notes_label = QLabel("Delší poznámka")
         notes_label.setObjectName("fieldLabel")
         form_side.addWidget(notes_label)
@@ -1382,6 +1463,15 @@ class MainWindow(QMainWindow):
         self.media_list.filesDropped.connect(self.add_media_paths)
 
         self.search_edit.textChanged.connect(lambda _text: self.reload_media())
+        self.type_filter_combo.currentIndexChanged.connect(
+            lambda _index: self.reload_media()
+        )
+        self.sort_combo.currentIndexChanged.connect(
+            lambda _index: self.reload_media()
+        )
+        self.thumbnail_combo.currentIndexChanged.connect(
+            self._on_thumbnail_mode_changed
+        )
 
         self.caption_edit.textChanged.connect(self._on_detail_edited)
         self.notes_edit.textChanged.connect(self._on_detail_edited)
@@ -1600,6 +1690,20 @@ class MainWindow(QMainWindow):
                 color: #b42318;
             }
 
+            QPushButton#ratingButton {
+                color: #a8adb4;
+                background: #ffffff;
+                border: 1px solid #d8dde3;
+                padding: 1px;
+                font-size: 17px;
+            }
+
+            QPushButton#ratingButton[active="true"] {
+                color: #c98b00;
+                background: #fff7df;
+                border-color: #e1bd61;
+            }
+
             QPushButton#miniButton,
             QPushButton#dangerMiniButton {
                 padding: 3px;
@@ -1725,6 +1829,8 @@ class MainWindow(QMainWindow):
         rows = self.db.media_items(
             self.selected_category_id(),
             self.search_edit.text(),
+            self.type_filter_combo.currentData(),
+            self.sort_combo.currentData() or "newest",
         )
 
         self.media_list.blockSignals(True)
@@ -1735,11 +1841,14 @@ class MainWindow(QMainWindow):
             path = Path(row["path"])
             caption = row["caption"].strip()
             title = caption or path.name
+            rating = int(row["rating"] or 0)
+            display_title = f"{'★' * rating} {title}" if rating else title
 
-            item = QListWidgetItem(title)
+            item = QListWidgetItem(display_title)
             item.setData(Qt.UserRole, int(row["id"]))
+            rating_text = "★" * rating if rating else "bez hodnocení"
             item.setToolTip(
-                f"{path}\nKategorie: {row['category_name']}"
+                f"{path}\nKategorie: {row['category_name']}\nHodnocení: {rating_text}"
             )
             item.setIcon(
                 self.make_icon(
@@ -1768,12 +1877,21 @@ class MainWindow(QMainWindow):
         else:
             self.clear_detail()
 
+    def _thumbnail_dimensions(self) -> tuple[int, int, int, int]:
+        sizes = {
+            "small": (120, 80, 145, 110),
+            "large": (220, 146, 248, 182),
+            "medium": (160, 106, 185, 140),
+        }
+        return sizes.get(self.thumbnail_mode, sizes["medium"])
+
     def _thumbnail_icon(self, pixmap: QPixmap) -> QIcon:
-        canvas = QPixmap(160, 106)
+        width, height, _grid_w, _grid_h = self._thumbnail_dimensions()
+        canvas = QPixmap(width, height)
         canvas.fill(QColor("#ffffff"))
         scaled = pixmap.scaled(
-            156,
-            102,
+            max(1, width - 4),
+            max(1, height - 4),
             Qt.KeepAspectRatio,
             Qt.SmoothTransformation,
         )
@@ -1783,6 +1901,17 @@ class MainWindow(QMainWindow):
         painter.drawPixmap(x, y, scaled)
         painter.end()
         return QIcon(canvas)
+
+    def _on_thumbnail_mode_changed(self, _index: int) -> None:
+        mode = self.thumbnail_combo.currentData()
+        if mode not in {"small", "medium", "large"}:
+            mode = "medium"
+
+        self.thumbnail_mode = str(mode)
+        width, height, grid_w, grid_h = self._thumbnail_dimensions()
+        self.media_list.setIconSize(QSize(width, height))
+        self.media_list.setGridSize(QSize(grid_w, grid_h))
+        self.reload_media(select_media_id=self.current_media_id)
 
     def make_icon(
         self,
@@ -2082,10 +2211,16 @@ class MainWindow(QMainWindow):
             if combo_index >= 0:
                 self.category_combo.setCurrentIndex(combo_index)
 
+            self.current_rating = max(0, min(3, int(row["rating"] or 0)))
+            for button in self.rating_buttons:
+                button.setEnabled(True)
+            self._refresh_rating_buttons()
+
             self.loaded_detail_state = (
                 str(row["caption"]),
                 str(row["notes"]),
                 int(row["category_id"]),
+                self.current_rating,
             )
 
             path = Path(row["path"])
@@ -2111,7 +2246,24 @@ class MainWindow(QMainWindow):
             self.caption_edit.text(),
             self.notes_edit.toPlainText(),
             int(category_id),
+            int(self.current_rating),
         )
+
+    def set_rating(self, rating: int) -> None:
+        if self.current_media_id is None:
+            return
+
+        rating = max(1, min(3, int(rating)))
+        self.current_rating = 0 if self.current_rating == rating else rating
+        self._refresh_rating_buttons()
+        self._on_detail_edited()
+
+    def _refresh_rating_buttons(self) -> None:
+        for index, button in enumerate(self.rating_buttons, start=1):
+            button.setProperty("active", index <= self.current_rating)
+            button.style().unpolish(button)
+            button.style().polish(button)
+            button.update()
 
     def _on_detail_edited(self, *args) -> None:
         if self.loading_detail:
@@ -2340,6 +2492,7 @@ class MainWindow(QMainWindow):
             caption.strip(),
             notes.strip(),
             int(category_id),
+            int(self.current_rating),
         )
 
         self.reload_categories(selected_category)
@@ -2347,10 +2500,13 @@ class MainWindow(QMainWindow):
 
         row = self.db.media_by_id(media_id)
         if row is not None:
+            self.current_rating = max(0, min(3, int(row["rating"] or 0)))
+            self._refresh_rating_buttons()
             self.loaded_detail_state = (
                 str(row["caption"]),
                 str(row["notes"]),
                 int(row["category_id"]),
+                self.current_rating,
             )
 
         self._show_saved_feedback()
@@ -2499,6 +2655,7 @@ class MainWindow(QMainWindow):
         self.current_media_id = None
         self.current_preview_path = None
         self.current_preview_type = None
+        self.current_rating = 0
         self.loaded_detail_state = None
         self.save_feedback_active = False
 
@@ -2516,6 +2673,10 @@ class MainWindow(QMainWindow):
             self.notes_edit.clear()
         finally:
             self.loading_detail = False
+
+        self._refresh_rating_buttons()
+        for button in self.rating_buttons:
+            button.setEnabled(False)
 
         self.open_btn.setEnabled(False)
         self.open_path_btn.setEnabled(False)
