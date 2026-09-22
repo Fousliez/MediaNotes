@@ -49,7 +49,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.5.1"
+APP_VERSION = "0.5.2"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -474,13 +474,7 @@ class Database:
             updated.append(int(row["id"]))
         return updated
 
-    def media_items(
-        self,
-        category_id: int | None = None,
-        search: str = "",
-        media_type: str | None = None,
-        sort_mode: str = "newest",
-    ):
+    def media_items(self, category_id: int | None = None, search: str = ""):
         query = """
             SELECT m.*, c.name AS category_name
             FROM media m
@@ -492,10 +486,6 @@ class Database:
         if category_id is not None:
             query += " AND m.category_id = ?"
             params.append(category_id)
-
-        if media_type:
-            query += " AND m.media_type = ?"
-            params.append(media_type)
 
         if search.strip():
             needle = f"%{search.strip()}%"
@@ -509,21 +499,7 @@ class Database:
             """
             params.extend([needle, needle, needle, needle])
 
-        order_by = {
-            "oldest": "m.id ASC",
-            "name_asc": (
-                "CASE WHEN TRIM(m.caption) = '' THEN m.path ELSE m.caption END "
-                "COLLATE NOCASE ASC, m.id DESC"
-            ),
-            "name_desc": (
-                "CASE WHEN TRIM(m.caption) = '' THEN m.path ELSE m.caption END "
-                "COLLATE NOCASE DESC, m.id DESC"
-            ),
-            "rating": "m.rating DESC, m.id DESC",
-            "newest": "m.id DESC",
-        }.get(sort_mode, "m.id DESC")
-
-        query += f" ORDER BY {order_by}"
+        query += " ORDER BY m.id DESC"
         return self.conn.execute(query, params).fetchall()
 
     def media_by_id(self, media_id: int):
@@ -1254,6 +1230,7 @@ class MainWindow(QMainWindow):
 
         media_panel = QFrame()
         media_panel.setObjectName("panel")
+        media_panel.setMinimumHeight(190)
         media_layout = QVBoxLayout(media_panel)
         media_layout.setContentsMargins(6, 5, 4, 4)
         media_layout.setSpacing(3)
@@ -1274,6 +1251,7 @@ class MainWindow(QMainWindow):
         self.type_filter_combo.addItem("Obrázky", "image")
         self.type_filter_combo.addItem("GIFy", "gif")
         self.type_filter_combo.addItem("Videa", "video")
+        self.type_filter_combo.setCurrentIndex(0)
         self.type_filter_combo.setFixedWidth(112)
         media_header.addWidget(self.type_filter_combo)
 
@@ -1284,6 +1262,7 @@ class MainWindow(QMainWindow):
         self.sort_combo.addItem("Název A–Z", "name_asc")
         self.sort_combo.addItem("Název Z–A", "name_desc")
         self.sort_combo.addItem("Hodnocení", "rating")
+        self.sort_combo.setCurrentIndex(0)
         self.sort_combo.setFixedWidth(118)
         media_header.addWidget(self.sort_combo)
 
@@ -1824,12 +1803,46 @@ class MainWindow(QMainWindow):
         if select_media_id is None:
             select_media_id = self.current_media_id
 
-        rows = self.db.media_items(
-            self.selected_category_id(),
-            self.search_edit.text(),
-            self.type_filter_combo.currentData(),
-            self.sort_combo.currentData() or "newest",
+        rows = list(
+            self.db.media_items(
+                self.selected_category_id(),
+                self.search_edit.text(),
+            )
         )
+
+        media_type = self.type_filter_combo.currentData()
+        if media_type in {"image", "gif", "video"}:
+            rows = [
+                row for row in rows
+                if str(row["media_type"]) == str(media_type)
+            ]
+
+        sort_mode = self.sort_combo.currentData() or "newest"
+        if sort_mode == "oldest":
+            rows.sort(key=lambda row: int(row["id"]))
+        elif sort_mode == "name_asc":
+            rows.sort(
+                key=lambda row: (
+                    str(row["caption"]).strip() or Path(row["path"]).name
+                ).casefold()
+            )
+        elif sort_mode == "name_desc":
+            rows.sort(
+                key=lambda row: (
+                    str(row["caption"]).strip() or Path(row["path"]).name
+                ).casefold(),
+                reverse=True,
+            )
+        elif sort_mode == "rating":
+            rows.sort(
+                key=lambda row: (
+                    int(row["rating"] or 0),
+                    int(row["id"]),
+                ),
+                reverse=True,
+            )
+        else:
+            rows.sort(key=lambda row: int(row["id"]), reverse=True)
 
         self.media_list.blockSignals(True)
         self.media_list.clear()
@@ -1865,6 +1878,11 @@ class MainWindow(QMainWindow):
 
         self.category_title.setText(self.selected_category_name())
         self.media_count_label.setText(f"{len(rows)} položek")
+        if not rows and self.db.total_media_count() > 0:
+            self.statusBar().showMessage(
+                "V databázi média jsou. Zkontroluj filtr nebo hledání.",
+                4000,
+            )
 
         if selected_row >= 0:
             self.media_list.setCurrentRow(selected_row)
