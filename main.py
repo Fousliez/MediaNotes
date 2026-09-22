@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.4.3"
+APP_VERSION = "0.4.4"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -508,9 +508,9 @@ class MediaListWidget(QListWidget):
         self.setViewMode(QListWidget.IconMode)
         self.setResizeMode(QListWidget.Adjust)
         self.setMovement(QListWidget.Static)
-        self.setIconSize(QSize(145, 96))
-        self.setGridSize(QSize(170, 128))
-        self.setSpacing(4)
+        self.setIconSize(QSize(160, 106))
+        self.setGridSize(QSize(185, 140))
+        self.setSpacing(3)
 
     def _has_local_files(self, event) -> bool:
         mime = event.mimeData()
@@ -912,8 +912,8 @@ class MainWindow(QMainWindow):
         root.setObjectName("root")
         self.setCentralWidget(root)
         root_layout = QVBoxLayout(root)
-        root_layout.setContentsMargins(8, 7, 8, 7)
-        root_layout.setSpacing(6)
+        root_layout.setContentsMargins(7, 6, 7, 5)
+        root_layout.setSpacing(4)
 
         top_bar = QHBoxLayout()
         top_bar.setSpacing(6)
@@ -948,8 +948,8 @@ class MainWindow(QMainWindow):
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
         sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(7, 8, 7, 7)
-        sidebar_layout.setSpacing(4)
+        sidebar_layout.setContentsMargins(3, 5, 5, 4)
+        sidebar_layout.setSpacing(3)
 
         sidebar_header = QHBoxLayout()
         category_heading = QLabel("Kategorie")
@@ -1004,8 +1004,8 @@ class MainWindow(QMainWindow):
         media_panel = QFrame()
         media_panel.setObjectName("panel")
         media_layout = QVBoxLayout(media_panel)
-        media_layout.setContentsMargins(8, 8, 8, 8)
-        media_layout.setSpacing(4)
+        media_layout.setContentsMargins(6, 5, 4, 4)
+        media_layout.setSpacing(3)
 
         media_header = QHBoxLayout()
         self.category_title = QLabel("Vše")
@@ -1031,8 +1031,8 @@ class MainWindow(QMainWindow):
         detail = QFrame()
         detail.setObjectName("detailCard")
         detail_layout = QHBoxLayout(detail)
-        detail_layout.setContentsMargins(8, 8, 8, 8)
-        detail_layout.setSpacing(10)
+        detail_layout.setContentsMargins(6, 5, 4, 4)
+        detail_layout.setSpacing(8)
 
         preview_side = QVBoxLayout()
         preview_side.setSpacing(4)
@@ -1040,7 +1040,7 @@ class MainWindow(QMainWindow):
         self.preview = QLabel("Vyber médium")
         self.preview.setObjectName("preview")
         self.preview.setAlignment(Qt.AlignCenter)
-        self.preview.setMinimumSize(330, 190)
+        self.preview.setMinimumSize(370, 215)
         preview_side.addWidget(self.preview, 1)
 
         self.path_label = QLabel("")
@@ -1137,31 +1137,31 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(
             """
             QWidget {
-                font-size: 11px;
+                font-size: 13px;
                 color: #20242a;
             }
 
             QWidget#root, QMainWindow {
-                background: #f3f5f7;
+                background: #ffffff;
             }
 
             QFrame#sidebar,
             QFrame#panel,
             QFrame#detailCard {
                 background: #ffffff;
-                border: 1px solid #d9dee5;
-                border-radius: 7px;
+                border: none;
+                border-radius: 0;
             }
 
             QLabel#appTitle {
-                font-size: 18px;
+                font-size: 20px;
                 font-weight: 700;
                 color: #1d232b;
                 padding-right: 4px;
             }
 
             QLabel#sectionTitle {
-                font-size: 14px;
+                font-size: 15px;
                 font-weight: 700;
                 color: #252b33;
             }
@@ -1189,10 +1189,10 @@ class MainWindow(QMainWindow):
             }
 
             QLabel#preview {
-                background: #f7f8fa;
+                background: #f6f7f9;
                 color: #78828e;
-                border: 1px solid #d8dde4;
-                border-radius: 6px;
+                border: none;
+                border-radius: 4px;
                 padding: 4px;
             }
 
@@ -1221,7 +1221,9 @@ class MainWindow(QMainWindow):
             }
 
             QListWidget#categoryList {
-                padding: 3px;
+                padding: 2px;
+                border: none;
+                background: transparent;
             }
 
             QListWidget#categoryList::item {
@@ -1239,8 +1241,14 @@ class MainWindow(QMainWindow):
             }
 
             QListWidget#mediaList {
-                padding: 5px;
-                background: #fbfcfd;
+                padding: 4px;
+                background: #ffffff;
+                border: none;
+            }
+
+            QListWidget#categoryList:focus,
+            QListWidget#mediaList:focus {
+                border: none;
             }
 
             QListWidget#mediaList[dragActive="true"] {
@@ -1257,7 +1265,7 @@ class MainWindow(QMainWindow):
             QListWidget#mediaList::item:selected {
                 background: #dbe8fb;
                 color: #172033;
-                border: 1px solid #7aa6e6;
+                border: none;
             }
 
             QListWidget#mediaList::item:hover:!selected {
@@ -1326,12 +1334,21 @@ class MainWindow(QMainWindow):
             }
 
             QStatusBar {
-                background: #f3f5f7;
+                background: #ffffff;
                 color: #78828e;
+                border-top: 1px solid #e3e7eb;
             }
 
             QSplitter::handle {
-                background: transparent;
+                background: #d9dee5;
+            }
+
+            QSplitter::handle:horizontal {
+                width: 1px;
+            }
+
+            QSplitter::handle:vertical {
+                height: 1px;
             }
             """
         )
@@ -1455,11 +1472,11 @@ class MainWindow(QMainWindow):
         if path.exists() and media_type in {"image", "gif"}:
             pixmap = QPixmap(str(path))
             if not pixmap.isNull():
-                canvas = QPixmap(145, 96)
+                canvas = QPixmap(160, 106)
                 canvas.fill(QColor("#ffffff"))
                 scaled = pixmap.scaled(
-                    141,
-                    92,
+                    156,
+                    102,
                     Qt.KeepAspectRatio,
                     Qt.SmoothTransformation,
                 )
