@@ -49,7 +49,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.1"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -994,7 +994,7 @@ class MainWindow(QMainWindow):
         self.recovery_thread: threading.Thread | None = None
         self.tracker_signals_connected = False
 
-        self.setWindowTitle(f"MediaNotes {APP_VERSION}")
+        self.setWindowTitle(f"MediaNotes v{APP_VERSION}")
         self.setAcceptDrops(True)
         self.resize(1180, 740)
         self.setMinimumSize(850, 560)
@@ -1177,11 +1177,6 @@ class MainWindow(QMainWindow):
         title.setObjectName("appTitle")
         top_bar.addWidget(title)
 
-        version_label = QLabel(f"v{APP_VERSION}")
-        version_label.setObjectName("versionLabel")
-        version_label.setToolTip(f"Spuštěná verze MediaNotes {APP_VERSION}")
-        top_bar.addWidget(version_label)
-
         self.search_edit = QLineEdit()
         self.search_edit.setObjectName("searchBox")
         self.search_edit.setPlaceholderText(
@@ -1335,6 +1330,13 @@ class MainWindow(QMainWindow):
 
         self.media_player.setVideoOutput(self.video_widget)
 
+        self.notes_edit = QTextEdit()
+        self.notes_edit.setObjectName("previewNote")
+        self.notes_edit.setPlaceholderText("Poznámka k tomuto médiu…")
+        self.notes_edit.setMinimumHeight(58)
+        self.notes_edit.setMaximumHeight(90)
+        preview_side.addWidget(self.notes_edit)
+
         self.path_label = QLabel("")
         self.path_label.setObjectName("pathLabel")
         self.path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -1409,15 +1411,7 @@ class MainWindow(QMainWindow):
         rating_row.addStretch()
         form_side.addLayout(rating_row)
 
-        notes_label = QLabel("Delší poznámka")
-        notes_label.setObjectName("fieldLabel")
-        form_side.addWidget(notes_label)
-
-        self.notes_edit = QTextEdit()
-        self.notes_edit.setPlaceholderText(
-            "Kontext, vysvětlení, proč sis to uložil, nápad na později…"
-        )
-        form_side.addWidget(self.notes_edit, 1)
+        form_side.addStretch()
 
         buttons = QHBoxLayout()
         self.save_btn = QPushButton("Uložit změny")
@@ -1523,16 +1517,6 @@ class MainWindow(QMainWindow):
                 color: #252b33;
             }
 
-            QLabel#versionLabel {
-                color: #67717d;
-                font-size: 12px;
-                padding: 2px 6px;
-                background: #eef1f4;
-                border: 1px solid #d9dee5;
-                border-radius: 6px;
-                margin-right: 4px;
-            }
-
             QLabel#fieldLabel {
                 font-weight: 600;
                 color: #333a43;
@@ -1551,6 +1535,20 @@ class MainWindow(QMainWindow):
                 border: none;
                 border-radius: 4px;
                 padding: 4px;
+            }
+
+            QTextEdit#previewNote {
+                background: #f6f7f9;
+                color: #20242a;
+                border: none;
+                border-top: 1px solid #dfe4e8;
+                border-radius: 4px;
+                padding: 5px;
+            }
+
+            QTextEdit#previewNote:focus {
+                border: none;
+                border-top: 1px solid #6d9ee8;
             }
 
             QLineEdit,
