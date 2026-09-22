@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.7.4"
+APP_VERSION = "0.7.5"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1463,6 +1463,7 @@ class MainWindow(QMainWindow):
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.setFixedWidth(290)
         media_header.addWidget(self.search_edit)
+        media_header.addStretch(1)
 
         self.type_filter_combo = QComboBox()
         self.type_filter_combo.setObjectName("filterCombo")
@@ -1526,6 +1527,7 @@ class MainWindow(QMainWindow):
 
         rating_row = QHBoxLayout()
         rating_row.setSpacing(3)
+        rating_row.addStretch()
 
         rating_label = QLabel("Hodnocení")
         rating_label.setObjectName("fieldLabel")
@@ -1546,6 +1548,13 @@ class MainWindow(QMainWindow):
 
         rating_row.addStretch()
         detail_layout.addLayout(rating_row)
+
+        rating_separator = QFrame()
+        rating_separator.setObjectName("detailSeparator")
+        rating_separator.setFrameShape(QFrame.HLine)
+        rating_separator.setFrameShadow(QFrame.Plain)
+        rating_separator.setFixedHeight(1)
+        detail_layout.addWidget(rating_separator)
 
         self.preview_stack = QStackedWidget()
 
