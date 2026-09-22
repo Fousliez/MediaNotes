@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.7.5"
+APP_VERSION = "0.7.6"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1509,14 +1509,14 @@ class MainWindow(QMainWindow):
         media_header_separator.setFixedHeight(1)
         media_layout.addWidget(media_header_separator)
 
-        content_splitter = QSplitter(Qt.Horizontal)
-        content_splitter.setChildrenCollapsible(False)
-        content_splitter.setHandleWidth(1)
-        media_layout.addWidget(content_splitter, 1)
+        self.content_splitter = QSplitter(Qt.Horizontal)
+        self.content_splitter.setChildrenCollapsible(False)
+        self.content_splitter.setHandleWidth(1)
+        media_layout.addWidget(self.content_splitter, 1)
 
         self.media_list = MediaListWidget()
         self.media_list.setContextMenuPolicy(Qt.CustomContextMenu)
-        content_splitter.addWidget(self.media_list)
+        self.content_splitter.addWidget(self.media_list)
 
         detail = QFrame()
         detail.setObjectName("detailCard")
@@ -1645,8 +1645,13 @@ class MainWindow(QMainWindow):
 
         detail_layout.addLayout(buttons)
 
-        content_splitter.addWidget(detail)
-        content_splitter.setSizes([700, 380])
+        self.content_splitter.addWidget(detail)
+        self.content_splitter.setSizes([700, 380])
+        self.content_splitter.splitterMoved.connect(
+            lambda _pos, _index: QTimer.singleShot(
+                0, self._refresh_preview_size
+            )
+        )
 
         splitter.addWidget(media_panel)
         splitter.setSizes([195, 1085])
@@ -2886,15 +2891,16 @@ class MainWindow(QMainWindow):
             )
         )
 
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
+    def _refresh_preview_size(self) -> None:
         if self.current_movie is not None:
-            self.current_movie.setScaledSize(
-                QSize(
-                    max(100, self.preview.width() - 20),
-                    max(100, self.preview.height() - 20),
-                )
+            target = QSize(
+                max(100, self.preview.width() - 20),
+                max(100, self.preview.height() - 20),
             )
+            current = self.current_movie.currentPixmap()
+            if not current.isNull():
+                target = current.size().scaled(target, Qt.KeepAspectRatio)
+            self.current_movie.setScaledSize(target)
         elif self.current_preview_type == "image":
             self._refresh_static_preview()
         elif (
@@ -2902,6 +2908,10 @@ class MainWindow(QMainWindow):
             and self.preview_stack.currentWidget() is self.preview
         ):
             self._refresh_video_poster()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._refresh_preview_size()
 
     def save_current(self) -> None:
         if (
