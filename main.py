@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.6.2"
+APP_VERSION = "0.6.3"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -996,7 +996,7 @@ class NotebookDialog(QDialog):
 
         self.save_btn = QPushButton("Uložit")
         self.save_btn.setObjectName("notebookSaveButton")
-        self.save_btn.setEnabled(False)
+        self.save_btn.setEnabled(True)
         self.save_btn.setProperty("dirty", False)
         self.save_btn.setProperty("saved", False)
         footer.addWidget(self.save_btn)
@@ -1066,24 +1066,21 @@ class NotebookDialog(QDialog):
         self.save_btn.setProperty("saved", False)
         self.save_btn.setProperty("dirty", dirty)
         self.save_btn.setText("Uložit")
-        self.save_btn.setEnabled(dirty)
+        self.save_btn.setEnabled(True)
         self.status_label.setText("Neuložené změny" if dirty else "")
         self._repolish_button()
 
     def save(self) -> None:
-        if not self._is_dirty():
-            return
+        if self._is_dirty():
+            content = self.editor.toPlainText()
+            self.db.save_notebook(content)
+            self.saved_content = content
 
-        content = self.editor.toPlainText()
-        self.db.save_notebook(content)
-        self.saved_content = content
-
-        self.saved_feedback_active = True
+        self.saved_feedback_active = False
         self.save_btn.setProperty("dirty", False)
-        self.save_btn.setProperty("saved", True)
-        self.save_btn.setText("✓ Uloženo")
+        self.save_btn.setProperty("saved", False)
+        self.save_btn.setText("Uložit")
         self.save_btn.setEnabled(True)
-        self.status_label.setText("Uloženo")
         self._repolish_button()
         self._set_editing(False)
         self.accept()
@@ -1094,7 +1091,7 @@ class NotebookDialog(QDialog):
         self.saved_feedback_active = False
         self.save_btn.setProperty("saved", False)
         self.save_btn.setText("Uložit")
-        self.save_btn.setEnabled(False)
+        self.save_btn.setEnabled(True)
         self.status_label.setText("")
         self._repolish_button()
 
