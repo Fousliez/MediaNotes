@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.6.1"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -958,6 +958,7 @@ class NotebookDialog(QDialog):
         self.db = db
         self.saved_content = self.db.notebook_content()
         self.saved_feedback_active = False
+        self.editing = False
 
         self.setWindowTitle("Sešit")
         self.resize(760, 560)
@@ -979,6 +980,8 @@ class NotebookDialog(QDialog):
         self.editor.setObjectName("notebookEditor")
         self.editor.setPlaceholderText("Začni psát…")
         self.editor.setPlainText(self.saved_content)
+        self.editor.setReadOnly(True)
+        self.editor.setProperty("editing", False)
         layout.addWidget(self.editor, 1)
 
         footer = QHBoxLayout()
@@ -986,6 +989,10 @@ class NotebookDialog(QDialog):
         self.status_label.setObjectName("mutedLabel")
         footer.addWidget(self.status_label)
         footer.addStretch()
+
+        self.edit_btn = QPushButton("Editovat")
+        self.edit_btn.setObjectName("notebookEditButton")
+        footer.addWidget(self.edit_btn)
 
         self.save_btn = QPushButton("Uložit")
         self.save_btn.setObjectName("notebookSaveButton")
@@ -996,10 +1003,54 @@ class NotebookDialog(QDialog):
         layout.addLayout(footer)
 
         self.editor.textChanged.connect(self._on_changed)
+        self.edit_btn.clicked.connect(self.toggle_editing)
         self.save_btn.clicked.connect(self.save)
 
         self.shortcut_save = QShortcut(QKeySequence("Ctrl+S"), self)
         self.shortcut_save.activated.connect(self.save)
+
+    def _set_editing(self, editing: bool) -> None:
+        self.editing = bool(editing)
+        self.editor.setReadOnly(not self.editing)
+        self.edit_btn.setText("Hotovo" if self.editing else "Editovat")
+        self.editor.setProperty("editing", self.editing)
+        self.editor.style().unpolish(self.editor)
+        self.editor.style().polish(self.editor)
+        self.editor.update()
+
+        if self.editing:
+            self.editor.setFocus()
+            self.status_label.setText(
+                "Neuložené změny" if self._is_dirty() else "Režim úprav"
+            )
+        elif not self._is_dirty():
+            self.status_label.setText("")
+
+    def toggle_editing(self) -> None:
+        if not self.editing:
+            self._set_editing(True)
+            return
+
+        if not self._is_dirty():
+            self._set_editing(False)
+            return
+
+        answer = QMessageBox.warning(
+            self,
+            "Neuložené změny",
+            "V sešitu jsou neuložené změny.",
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Save,
+        )
+
+        if answer == QMessageBox.Save:
+            self.save()
+        elif answer == QMessageBox.Discard:
+            self.editor.blockSignals(True)
+            self.editor.setPlainText(self.saved_content)
+            self.editor.blockSignals(False)
+            self._on_changed()
+            self._set_editing(False)
 
     def _repolish_button(self) -> None:
         self.save_btn.style().unpolish(self.save_btn)
@@ -1034,6 +1085,7 @@ class NotebookDialog(QDialog):
         self.save_btn.setEnabled(True)
         self.status_label.setText("Uloženo")
         self._repolish_button()
+        self._set_editing(False)
         QTimer.singleShot(1100, self._finish_saved_feedback)
 
     def _finish_saved_feedback(self) -> None:
@@ -1905,6 +1957,27 @@ class MainWindow(QMainWindow):
 
             QTextEdit#notebookEditor:focus {
                 border: 1px solid #8aabe0;
+            }
+
+            QPushButton#notebookEditButton {
+                background: #ffffff;
+                color: #2b3138;
+                border: 1px solid #cbd2da;
+                font-weight: 600;
+                min-width: 92px;
+            }
+
+            QPushButton#notebookEditButton:hover {
+                background: #eef1f4;
+            }
+
+            QTextEdit#notebookEditor[editing="false"] {
+                background: #f6f7f9;
+                color: #3f4852;
+            }
+
+            QTextEdit#notebookEditor[editing="true"] {
+                background: #ffffff;
             }
 
             QPushButton#notebookSaveButton {
