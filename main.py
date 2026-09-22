@@ -49,7 +49,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.5.5"
+APP_VERSION = "0.5.6"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1162,9 +1162,6 @@ class MainWindow(QMainWindow):
         self.search_edit.setMaximumWidth(430)
         top_bar.addWidget(self.search_edit, 1)
 
-        self.add_media_btn = QPushButton("＋  Přidat média")
-        self.add_media_btn.setObjectName("primaryButton")
-        top_bar.addWidget(self.add_media_btn)
         root_layout.addLayout(top_bar)
 
         splitter = QSplitter(Qt.Horizontal)
@@ -1248,6 +1245,7 @@ class MainWindow(QMainWindow):
         media_header.addStretch()
 
         self.type_filter_combo = QComboBox()
+        self.type_filter_combo.setObjectName("filterCombo")
         self.type_filter_combo.setToolTip("Filtrovat podle typu média")
         self.type_filter_combo.addItem("Všechny typy", None)
         self.type_filter_combo.addItem("Obrázky", "image")
@@ -1258,6 +1256,7 @@ class MainWindow(QMainWindow):
         media_header.addWidget(self.type_filter_combo)
 
         self.sort_combo = QComboBox()
+        self.sort_combo.setObjectName("filterCombo")
         self.sort_combo.setToolTip("Řazení galerie")
         self.sort_combo.addItem("Nejnovější", "newest")
         self.sort_combo.addItem("Nejstarší", "oldest")
@@ -1269,6 +1268,7 @@ class MainWindow(QMainWindow):
         media_header.addWidget(self.sort_combo)
 
         self.thumbnail_combo = QComboBox()
+        self.thumbnail_combo.setObjectName("filterCombo")
         self.thumbnail_combo.setToolTip("Velikost náhledů")
         self.thumbnail_combo.addItem("Malé náhledy", "small")
         self.thumbnail_combo.addItem("Střední náhledy", "medium")
@@ -1424,7 +1424,6 @@ class MainWindow(QMainWindow):
         splitter.addWidget(right_splitter)
         splitter.setSizes([195, 1085])
 
-        self.add_media_btn.clicked.connect(self.add_media_dialog)
         self.add_category_btn.clicked.connect(self.add_category)
         self.rename_category_btn.clicked.connect(self.rename_category)
         self.delete_category_btn.clicked.connect(self.delete_category)
@@ -1578,6 +1577,45 @@ class MainWindow(QMainWindow):
 
             QLineEdit#searchBox {
                 padding: 6px 8px;
+            }
+
+            QComboBox#filterCombo {
+                background: #f3f5f7;
+                color: #2b3138;
+                border: 1px solid #d9dee5;
+                border-radius: 10px;
+                padding: 5px 26px 5px 10px;
+                min-height: 20px;
+            }
+
+            QComboBox#filterCombo:hover {
+                background: #eceff3;
+                border-color: #cbd2da;
+            }
+
+            QComboBox#filterCombo:focus,
+            QComboBox#filterCombo:on {
+                background: #ffffff;
+                border: 1px solid #8aabe0;
+            }
+
+            QComboBox#filterCombo::drop-down {
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 24px;
+                border: none;
+                background: transparent;
+            }
+
+            QComboBox#filterCombo QAbstractItemView {
+                background: #ffffff;
+                color: #20242a;
+                border: 1px solid #d3d9e0;
+                border-radius: 7px;
+                padding: 4px;
+                selection-background-color: #dbe8fb;
+                selection-color: #172033;
+                outline: none;
             }
 
             QListWidget#categoryList {
