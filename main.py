@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QStyle,
+    QStyledItemDelegate,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -48,7 +49,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.4.7"
+APP_VERSION = "0.4.8"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -917,6 +918,23 @@ def recover_missing_files(
     bridge.recoveryFinished.emit(recovered)
 
 
+class CategoryDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index) -> None:
+        super().paint(painter, option, index)
+
+        if index.row() == 0:
+            painter.save()
+            painter.setPen(QColor("#cfd5dc"))
+            y = option.rect.bottom() + 1
+            painter.drawLine(
+                option.rect.left() + 6,
+                y,
+                option.rect.right() - 6,
+                y,
+            )
+            painter.restore()
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1171,6 +1189,7 @@ class MainWindow(QMainWindow):
         self.category_list.setObjectName("categoryList")
         self.category_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.category_list.setSpacing(2)
+        self.category_list.setItemDelegate(CategoryDelegate(self.category_list))
         sidebar_layout.addWidget(self.category_list, 1)
 
         category_buttons = QHBoxLayout()
@@ -1650,6 +1669,10 @@ class MainWindow(QMainWindow):
         all_item = QListWidgetItem(f"Vše  ·  {total}")
         all_item.setData(Qt.UserRole, None)
         all_item.setData(Qt.UserRole + 1, "Vše")
+        all_font = all_item.font()
+        all_font.setBold(True)
+        all_item.setFont(all_font)
+        all_item.setSizeHint(QSize(all_item.sizeHint().width(), 34))
         self.category_list.addItem(all_item)
 
         selected_row = 0
