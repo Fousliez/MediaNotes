@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.4.1"
+APP_VERSION = "0.4.2"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -595,20 +595,47 @@ class TrackerEventHandler(FileSystemEventHandler):
         self.bridge.deleted.emit(str(event.src_path), bool(event.is_directory))
 
 
-def tracker_roots(paths: list[str]) -> list[Path]:
-    candidates = [Path.home()]
+def live_watch_dirs(paths: list[str]) -> list[Path]:
+    """Sleduj jen konkrétní složky, kde média skutečně leží."""
+    roots: list[Path] = []
+    seen: set[str] = set()
+
+    for raw in paths:
+        parent = Path(raw).expanduser().parent
+        try:
+            resolved = parent.resolve()
+        except OSError:
+            continue
+        if not resolved.is_dir():
+            continue
+
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        roots.append(resolved)
+
+    return roots
+
+
+def recovery_roots(paths: list[str]) -> list[Path]:
+    """Širší hledání běží jen ve worker threadu, nikdy v GUI vlákně."""
+    candidates: list[Path] = [Path.home()]
+
     media_root = Path("/media") / Path.home().name
     if media_root.exists():
         candidates.append(media_root)
+
     if Path("/mnt").exists():
         candidates.append(Path("/mnt"))
 
     for raw in paths:
-        parent = Path(raw).parent
+        parent = Path(raw).expanduser().parent
         if parent.exists():
             candidates.append(parent)
 
     roots: list[Path] = []
+    seen: set[str] = set()
     for candidate in candidates:
         try:
             resolved = candidate.resolve()
@@ -616,13 +643,13 @@ def tracker_roots(paths: list[str]) -> list[Path]:
             continue
         if not resolved.is_dir():
             continue
-        if any(resolved == root or root in resolved.parents for root in roots):
+
+        key = str(resolved)
+        if key in seen:
             continue
-        roots = [
-            root for root in roots
-            if not (root == resolved or resolved in root.parents)
-        ]
+        seen.add(key)
         roots.append(resolved)
+
     return roots
 
 
@@ -640,6 +667,10 @@ def recover_missing_files(
     unresolved: set[int] = set()
 
     for row in missing_rows:
+        original_path = Path(str(row["path"]))
+        if original_path.is_file():
+            continue
+
         media_id = int(row["id"])
         unresolved.add(media_id)
         device = row.get("file_device")
@@ -651,6 +682,10 @@ def recover_missing_files(
             inode_targets[(int(device), int(inode))] = media_id
         if size is not None and fingerprint:
             fingerprint_targets[(int(size), str(fingerprint))] = media_id
+
+    if not unresolved:
+        bridge.recoveryFinished.emit(0)
+        return
 
     skip_dirs = {
         ".cache",
@@ -744,7 +779,7 @@ class MainWindow(QMainWindow):
 
         # Okno se zobrazí hned. Sledovač a hledání přesunutých souborů
         # se spouští až potom, aby neblokovaly start aplikace.
-        QTimer.singleShot(500, self._start_background_services)
+        QTimer.singleShot(1200, self._start_background_services)
 
     def _start_background_services(self) -> None:
         self._start_file_tracker()
@@ -762,13 +797,18 @@ class MainWindow(QMainWindow):
             self.tracker_signals_connected = True
 
         paths = [str(row["path"]) for row in self.db.tracked_media()]
+        if not paths:
+            return
+
         observer = Observer()
         handler = TrackerEventHandler(self.tracker_bridge)
         scheduled = 0
 
-        for root in tracker_roots(paths):
+        # Zásadně nerekurzivně. Dřívější verze sledovala celý domovský
+        # adresář a na větším stromu dokázala desktop prakticky zmrazit.
+        for root in live_watch_dirs(paths):
             try:
-                observer.schedule(handler, str(root), recursive=True)
+                observer.schedule(handler, str(root), recursive=False)
                 scheduled += 1
             except (OSError, PermissionError):
                 continue
@@ -781,7 +821,9 @@ class MainWindow(QMainWindow):
         if self.recovery_thread is not None and self.recovery_thread.is_alive():
             return
 
-        rows = self.db.missing_media()
+        # Na GUI vlákně jen rychle načteme řádky ze SQLite.
+        # Kontrola existence i případné procházení disku běží až ve workeru.
+        rows = list(self.db.tracked_media())
         if only_media_id is not None:
             rows = [
                 row for row in rows
@@ -791,9 +833,7 @@ class MainWindow(QMainWindow):
             return
 
         payload = [dict(row) for row in rows]
-        roots = tracker_roots(
-            [str(row["path"]) for row in self.db.tracked_media()]
-        )
+        roots = recovery_roots([str(row["path"]) for row in rows])
 
         self.recovery_thread = threading.Thread(
             target=recover_missing_files,
