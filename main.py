@@ -7,7 +7,7 @@ import sys
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QSize, Qt, QUrl, Signal
+from PySide6.QtCore import QObject, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.4.1"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -93,7 +93,6 @@ class Database:
         self._migrate_schema()
         self._ensure_default_category()
         self._normalize_category_order()
-        self._backfill_media_identity()
 
     def _create_schema(self) -> None:
         self.conn.executescript(
@@ -741,9 +740,15 @@ class MainWindow(QMainWindow):
 
         self.reload_categories()
         self.reload_media()
+        self.statusBar().showMessage("Připraveno", 2500)
+
+        # Okno se zobrazí hned. Sledovač a hledání přesunutých souborů
+        # se spouští až potom, aby neblokovaly start aplikace.
+        QTimer.singleShot(500, self._start_background_services)
+
+    def _start_background_services(self) -> None:
         self._start_file_tracker()
         self._start_missing_recovery()
-        self.statusBar().showMessage("Připraveno", 2500)
 
     def _start_file_tracker(self) -> None:
         if not self.tracker_signals_connected:
@@ -1093,57 +1098,60 @@ class MainWindow(QMainWindow):
             """
             QWidget {
                 font-size: 13px;
-                color: #e9edf2;
+                color: #20242a;
             }
 
             QWidget#root, QMainWindow {
-                background: #11151a;
+                background: #f3f5f7;
             }
 
             QFrame#sidebar,
             QFrame#panel,
             QFrame#detailCard {
-                background: #181d23;
-                border: 1px solid #29313a;
+                background: #ffffff;
+                border: 1px solid #d9dee5;
                 border-radius: 10px;
             }
 
             QLabel#appTitle {
                 font-size: 22px;
                 font-weight: 700;
-                padding-right: 10px;
+                color: #1d232b;
+                padding-right: 8px;
             }
 
             QLabel#sectionTitle {
                 font-size: 16px;
                 font-weight: 700;
+                color: #252b33;
             }
 
             QLabel#versionLabel {
-                color: #7f8a96;
+                color: #67717d;
                 font-size: 12px;
                 padding: 3px 8px;
-                background: #1b222a;
-                border: 1px solid #303945;
+                background: #eef1f4;
+                border: 1px solid #d9dee5;
                 border-radius: 8px;
                 margin-right: 8px;
             }
 
             QLabel#fieldLabel {
                 font-weight: 600;
+                color: #333a43;
                 margin-top: 3px;
             }
 
             QLabel#mutedLabel,
             QLabel#pathLabel {
-                color: #8e98a5;
+                color: #78828e;
                 font-size: 12px;
             }
 
             QLabel#preview {
-                background: #0d1014;
-                color: #8e98a5;
-                border: 1px solid #2b333d;
+                background: #f7f8fa;
+                color: #78828e;
+                border: 1px solid #d8dde4;
                 border-radius: 8px;
                 padding: 8px;
             }
@@ -1152,19 +1160,20 @@ class MainWindow(QMainWindow):
             QTextEdit,
             QComboBox,
             QListWidget {
-                background: #11161c;
-                color: #edf1f5;
-                border: 1px solid #303945;
+                background: #ffffff;
+                color: #20242a;
+                border: 1px solid #cfd5dc;
                 border-radius: 7px;
                 padding: 7px;
-                selection-background-color: #2d6cdf;
+                selection-background-color: #cfe0ff;
+                selection-color: #172033;
             }
 
             QLineEdit:focus,
             QTextEdit:focus,
             QComboBox:focus,
             QListWidget:focus {
-                border: 1px solid #4d86e8;
+                border: 1px solid #6d9ee8;
             }
 
             QLineEdit#searchBox {
@@ -1181,21 +1190,22 @@ class MainWindow(QMainWindow):
             }
 
             QListWidget#categoryList::item:selected {
-                background: #274e83;
+                background: #dbe8fb;
+                color: #172033;
             }
 
             QListWidget#categoryList::item:hover:!selected {
-                background: #222a33;
+                background: #f0f3f6;
             }
 
             QListWidget#mediaList {
                 padding: 10px;
-                background: #0f1419;
+                background: #fbfcfd;
             }
 
             QListWidget#mediaList[dragActive="true"] {
-                border: 2px dashed #5d95f4;
-                background: #111d2c;
+                border: 2px dashed #6d9ee8;
+                background: #eef5ff;
             }
 
             QListWidget#mediaList::item {
@@ -1205,49 +1215,51 @@ class MainWindow(QMainWindow):
             }
 
             QListWidget#mediaList::item:selected {
-                background: #243f63;
-                border: 1px solid #4d86e8;
+                background: #dbe8fb;
+                color: #172033;
+                border: 1px solid #7aa6e6;
             }
 
             QListWidget#mediaList::item:hover:!selected {
-                background: #1c252f;
+                background: #f1f4f7;
             }
 
             QPushButton {
-                background: #252c34;
-                color: #eef2f6;
-                border: 1px solid #35404b;
+                background: #ffffff;
+                color: #252b33;
+                border: 1px solid #cbd2da;
                 border-radius: 7px;
                 padding: 8px 11px;
             }
 
             QPushButton:hover {
-                background: #303944;
+                background: #f1f4f7;
             }
 
             QPushButton:pressed {
-                background: #20262d;
+                background: #e6eaee;
             }
 
             QPushButton:disabled {
-                color: #69727c;
-                background: #1c2127;
-                border-color: #272e36;
+                color: #a0a7af;
+                background: #f2f4f6;
+                border-color: #dfe3e7;
             }
 
             QPushButton#primaryButton {
                 background: #2d6cdf;
-                border-color: #3979e8;
+                color: #ffffff;
+                border-color: #2d6cdf;
                 font-weight: 600;
             }
 
             QPushButton#primaryButton:hover {
-                background: #3778ea;
+                background: #3978e5;
             }
 
             QPushButton#dangerButton,
             QPushButton#dangerMiniButton {
-                color: #ffb6b6;
+                color: #b42318;
             }
 
             QPushButton#miniButton,
@@ -1257,8 +1269,9 @@ class MainWindow(QMainWindow):
             }
 
             QMenu {
-                background: #1b2128;
-                border: 1px solid #36404b;
+                background: #ffffff;
+                color: #20242a;
+                border: 1px solid #cfd5dc;
                 padding: 5px;
             }
 
@@ -1268,12 +1281,13 @@ class MainWindow(QMainWindow):
             }
 
             QMenu::item:selected {
-                background: #2d6cdf;
+                background: #dbe8fb;
+                color: #172033;
             }
 
             QStatusBar {
-                background: #11151a;
-                color: #8e98a5;
+                background: #f3f5f7;
+                color: #78828e;
             }
 
             QSplitter::handle {
@@ -1402,7 +1416,7 @@ class MainWindow(QMainWindow):
             pixmap = QPixmap(str(path))
             if not pixmap.isNull():
                 canvas = QPixmap(180, 125)
-                canvas.fill(QColor("#0d1014"))
+                canvas.fill(QColor("#ffffff"))
                 scaled = pixmap.scaled(
                     176,
                     121,
