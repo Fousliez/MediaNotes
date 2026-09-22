@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.6.1"
+APP_VERSION = "0.6.2"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1086,7 +1086,7 @@ class NotebookDialog(QDialog):
         self.status_label.setText("Uloženo")
         self._repolish_button()
         self._set_editing(False)
-        QTimer.singleShot(1100, self._finish_saved_feedback)
+        self.accept()
 
     def _finish_saved_feedback(self) -> None:
         if not self.saved_feedback_active:
