@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.6.5"
+APP_VERSION = "0.6.6"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1547,12 +1547,6 @@ class MainWindow(QMainWindow):
         self.notes_edit.setMaximumHeight(90)
         preview_side.addWidget(self.notes_edit)
 
-        self.path_label = QLabel("")
-        self.path_label.setObjectName("pathLabel")
-        self.path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.path_label.setWordWrap(False)
-        preview_side.addWidget(self.path_label)
-
         preview_actions = QHBoxLayout()
 
         self.play_pause_btn = QPushButton("▶ Přehrát")
@@ -1758,8 +1752,7 @@ class MainWindow(QMainWindow):
                 margin-top: 1px;
             }
 
-            QLabel#mutedLabel,
-            QLabel#pathLabel {
+            QLabel#mutedLabel {
                 color: #78828e;
                 font-size: 12px;
             }
@@ -2233,15 +2226,21 @@ class MainWindow(QMainWindow):
         for index, row in enumerate(rows):
             path = Path(row["path"])
             caption = row["caption"].strip()
-            title = caption or path.name
             rating = int(row["rating"] or 0)
-            display_title = f"{'★' * rating} {title}" if rating else title
+            if caption and rating:
+                display_title = f"{'★' * rating} {caption}"
+            elif caption:
+                display_title = caption
+            elif rating:
+                display_title = "★" * rating
+            else:
+                display_title = ""
 
             item = QListWidgetItem(display_title)
             item.setData(Qt.UserRole, int(row["id"]))
             rating_text = "★" * rating if rating else "bez hodnocení"
             item.setToolTip(
-                f"{path}\nKategorie: {row['category_name']}\nHodnocení: {rating_text}"
+                f"Kategorie: {row['category_name']}\nHodnocení: {rating_text}"
             )
             item.setIcon(
                 self.make_icon(
@@ -2624,8 +2623,6 @@ class MainWindow(QMainWindow):
             )
 
             path = Path(row["path"])
-            self.path_label.setText(str(path))
-            self.path_label.setToolTip(str(path))
             self.show_preview(path, row["media_type"])
             self.open_btn.setEnabled(path.exists())
             self.open_path_btn.setEnabled(path.parent.exists())
@@ -2755,7 +2752,7 @@ class MainWindow(QMainWindow):
                 self.thumbnailer.request(self.current_media_id, path)
             return
 
-        self.preview.setText(path.name)
+        self.preview.setText("Náhled není k dispozici")
 
     def _refresh_video_poster(self) -> None:
         if (
@@ -3068,7 +3065,6 @@ class MainWindow(QMainWindow):
         self.preview.setToolTip("")
         self.loading_detail = True
         try:
-            self.path_label.clear()
             self.caption_edit.clear()
             self.notes_edit.clear()
         finally:
