@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.6.4"
+APP_VERSION = "0.6.5"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -959,6 +959,7 @@ class NotebookDialog(QDialog):
         self.saved_content = self.db.notebook_content()
         self.saved_feedback_active = False
         self.editing = False
+        self.closing_after_save = False
 
         self.setWindowTitle("Sešit")
         self.resize(760, 560)
@@ -1071,18 +1072,29 @@ class NotebookDialog(QDialog):
         self._repolish_button()
 
     def save(self) -> None:
+        if self.closing_after_save:
+            return
+
         if self._is_dirty():
             content = self.editor.toPlainText()
             self.db.save_notebook(content)
             self.saved_content = content
 
         self.saved_feedback_active = False
+        self.closing_after_save = True
         self.save_btn.setProperty("dirty", False)
         self.save_btn.setProperty("saved", False)
         self.save_btn.setText("Uložit")
         self.save_btn.setEnabled(True)
         self._repolish_button()
         self._set_editing(False)
+
+        self.save_btn.setDown(True)
+        QTimer.singleShot(250, self._finish_save_and_close)
+
+    def _finish_save_and_close(self) -> None:
+        self.save_btn.setDown(False)
+        self.closing_after_save = False
         self.accept()
 
     def _finish_saved_feedback(self) -> None:
@@ -1110,7 +1122,7 @@ class NotebookDialog(QDialog):
 
         if answer == QMessageBox.Save:
             self.save()
-            event.accept()
+            event.ignore()
         elif answer == QMessageBox.Discard:
             self.editor.blockSignals(True)
             self.editor.setPlainText(self.saved_content)
@@ -1988,6 +2000,13 @@ class MainWindow(QMainWindow):
             QPushButton#notebookSaveButton:hover {
                 background: #27874a;
                 border-color: #27874a;
+            }
+
+            QPushButton#notebookSaveButton:pressed {
+                background: #1f743d;
+                border-color: #1f743d;
+                padding-top: 6px;
+                padding-bottom: 4px;
             }
 
             QPushButton#notebookSaveButton[dirty="true"] {
