@@ -810,10 +810,17 @@ class MainWindow(QMainWindow):
         )
 
     def _create_shortcuts(self) -> None:
-        QShortcut(QKeySequence("Ctrl+O"), self, activated=self.add_media_dialog)
-        QShortcut(QKeySequence("Ctrl+S"), self, activated=self.save_current)
-        QShortcut(QKeySequence("Ctrl+F"), self, activated=self.search_edit.setFocus)
-        QShortcut(QKeySequence("Delete"), self, activated=self.delete_selected_media)
+        self.shortcut_open = QShortcut(QKeySequence("Ctrl+O"), self)
+        self.shortcut_open.activated.connect(self.add_media_dialog)
+
+        self.shortcut_save = QShortcut(QKeySequence("Ctrl+S"), self)
+        self.shortcut_save.activated.connect(self.save_current)
+
+        self.shortcut_search = QShortcut(QKeySequence("Ctrl+F"), self)
+        self.shortcut_search.activated.connect(self.search_edit.setFocus)
+
+        self.shortcut_delete = QShortcut(QKeySequence("Delete"), self)
+        self.shortcut_delete.activated.connect(self.delete_selected_media)
 
     def reload_categories(self, keep_category_id: int | None = None) -> None:
         if keep_category_id is None:
