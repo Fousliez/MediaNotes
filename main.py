@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.6.3"
+APP_VERSION = "0.6.4"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1978,17 +1978,22 @@ class MainWindow(QMainWindow):
             }
 
             QPushButton#notebookSaveButton {
-                background: #f2f4f6;
-                color: #9aa2ab;
-                border-color: #dfe3e7;
+                background: #2e9b55;
+                color: #ffffff;
+                border-color: #2e9b55;
                 font-weight: 600;
                 min-width: 92px;
             }
 
+            QPushButton#notebookSaveButton:hover {
+                background: #27874a;
+                border-color: #27874a;
+            }
+
             QPushButton#notebookSaveButton[dirty="true"] {
-                background: #2d6cdf;
+                background: #238746;
                 color: #ffffff;
-                border-color: #2d6cdf;
+                border-color: #238746;
             }
 
             QPushButton#notebookSaveButton[saved="true"] {
