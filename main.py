@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.7.2"
+APP_VERSION = "0.7.3"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1775,14 +1775,12 @@ class MainWindow(QMainWindow):
                 background: #f6f7f9;
                 color: #20242a;
                 border: none;
-                border-top: 1px solid #dfe4e8;
                 border-radius: 4px;
                 padding: 5px;
             }
 
             QTextEdit#previewNote:focus {
                 border: none;
-                border-top: 1px solid #6d9ee8;
             }
 
             QLineEdit,
