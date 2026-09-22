@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.4.2"
+APP_VERSION = "0.4.3"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -508,9 +508,9 @@ class MediaListWidget(QListWidget):
         self.setViewMode(QListWidget.IconMode)
         self.setResizeMode(QListWidget.Adjust)
         self.setMovement(QListWidget.Static)
-        self.setIconSize(QSize(180, 125))
-        self.setGridSize(QSize(215, 170))
-        self.setSpacing(8)
+        self.setIconSize(QSize(145, 96))
+        self.setGridSize(QSize(170, 128))
+        self.setSpacing(4)
 
     def _has_local_files(self, event) -> bool:
         mime = event.mimeData()
@@ -766,8 +766,8 @@ class MainWindow(QMainWindow):
         self.tracker_signals_connected = False
 
         self.setWindowTitle(f"MediaNotes {APP_VERSION}")
-        self.resize(1280, 820)
-        self.setMinimumSize(950, 620)
+        self.resize(1180, 740)
+        self.setMinimumSize(850, 560)
 
         self._build_ui()
         self._apply_style()
@@ -912,11 +912,11 @@ class MainWindow(QMainWindow):
         root.setObjectName("root")
         self.setCentralWidget(root)
         root_layout = QVBoxLayout(root)
-        root_layout.setContentsMargins(16, 14, 16, 12)
-        root_layout.setSpacing(12)
+        root_layout.setContentsMargins(8, 7, 8, 7)
+        root_layout.setSpacing(6)
 
         top_bar = QHBoxLayout()
-        top_bar.setSpacing(10)
+        top_bar.setSpacing(6)
 
         title = QLabel("MediaNotes")
         title.setObjectName("appTitle")
@@ -933,7 +933,7 @@ class MainWindow(QMainWindow):
             "Hledat v popiscích, poznámkách, kategoriích nebo názvech souborů…"
         )
         self.search_edit.setClearButtonEnabled(True)
-        self.search_edit.setMaximumWidth(520)
+        self.search_edit.setMaximumWidth(430)
         top_bar.addWidget(self.search_edit, 1)
 
         self.add_media_btn = QPushButton("＋  Přidat média")
@@ -948,8 +948,8 @@ class MainWindow(QMainWindow):
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
         sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(12, 14, 12, 12)
-        sidebar_layout.setSpacing(8)
+        sidebar_layout.setContentsMargins(7, 8, 7, 7)
+        sidebar_layout.setSpacing(4)
 
         sidebar_header = QHBoxLayout()
         category_heading = QLabel("Kategorie")
@@ -960,7 +960,7 @@ class MainWindow(QMainWindow):
         self.add_category_btn = QPushButton("＋")
         self.add_category_btn.setObjectName("miniButton")
         self.add_category_btn.setToolTip("Nová kategorie")
-        self.add_category_btn.setFixedWidth(34)
+        self.add_category_btn.setFixedWidth(30)
         sidebar_header.addWidget(self.add_category_btn)
         sidebar_layout.addLayout(sidebar_header)
 
@@ -971,7 +971,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.category_list, 1)
 
         category_buttons = QHBoxLayout()
-        category_buttons.setSpacing(6)
+        category_buttons.setSpacing(4)
 
         self.rename_category_btn = QPushButton("Přejmenovat")
         self.rename_category_btn.setToolTip("Přejmenovat vybranou kategorii")
@@ -980,19 +980,19 @@ class MainWindow(QMainWindow):
         self.category_up_btn = QPushButton("↑")
         self.category_up_btn.setObjectName("miniButton")
         self.category_up_btn.setToolTip("Posunout kategorii nahoru")
-        self.category_up_btn.setFixedWidth(34)
+        self.category_up_btn.setFixedWidth(30)
         category_buttons.addWidget(self.category_up_btn)
 
         self.category_down_btn = QPushButton("↓")
         self.category_down_btn.setObjectName("miniButton")
         self.category_down_btn.setToolTip("Posunout kategorii dolů")
-        self.category_down_btn.setFixedWidth(34)
+        self.category_down_btn.setFixedWidth(30)
         category_buttons.addWidget(self.category_down_btn)
 
         self.delete_category_btn = QPushButton("×")
         self.delete_category_btn.setObjectName("dangerMiniButton")
         self.delete_category_btn.setToolTip("Smazat kategorii")
-        self.delete_category_btn.setFixedWidth(34)
+        self.delete_category_btn.setFixedWidth(30)
         category_buttons.addWidget(self.delete_category_btn)
 
         sidebar_layout.addLayout(category_buttons)
@@ -1004,8 +1004,8 @@ class MainWindow(QMainWindow):
         media_panel = QFrame()
         media_panel.setObjectName("panel")
         media_layout = QVBoxLayout(media_panel)
-        media_layout.setContentsMargins(14, 14, 14, 14)
-        media_layout.setSpacing(8)
+        media_layout.setContentsMargins(8, 8, 8, 8)
+        media_layout.setSpacing(4)
 
         media_header = QHBoxLayout()
         self.category_title = QLabel("Vše")
@@ -1031,16 +1031,16 @@ class MainWindow(QMainWindow):
         detail = QFrame()
         detail.setObjectName("detailCard")
         detail_layout = QHBoxLayout(detail)
-        detail_layout.setContentsMargins(14, 14, 14, 14)
-        detail_layout.setSpacing(16)
+        detail_layout.setContentsMargins(8, 8, 8, 8)
+        detail_layout.setSpacing(10)
 
         preview_side = QVBoxLayout()
-        preview_side.setSpacing(8)
+        preview_side.setSpacing(4)
 
         self.preview = QLabel("Vyber médium")
         self.preview.setObjectName("preview")
         self.preview.setAlignment(Qt.AlignCenter)
-        self.preview.setMinimumSize(430, 260)
+        self.preview.setMinimumSize(330, 190)
         preview_side.addWidget(self.preview, 1)
 
         self.path_label = QLabel("")
@@ -1059,7 +1059,7 @@ class MainWindow(QMainWindow):
         detail_layout.addLayout(preview_side, 3)
 
         form_side = QVBoxLayout()
-        form_side.setSpacing(7)
+        form_side.setSpacing(4)
 
         caption_label = QLabel("Krátký popisek")
         caption_label.setObjectName("fieldLabel")
@@ -1101,10 +1101,10 @@ class MainWindow(QMainWindow):
         detail_layout.addLayout(form_side, 2)
 
         right_splitter.addWidget(detail)
-        right_splitter.setSizes([470, 330])
+        right_splitter.setSizes([560, 240])
 
         splitter.addWidget(right_splitter)
-        splitter.setSizes([245, 1035])
+        splitter.setSizes([195, 1085])
 
         self.add_media_btn.clicked.connect(self.add_media_dialog)
         self.add_category_btn.clicked.connect(self.add_category)
@@ -1137,7 +1137,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(
             """
             QWidget {
-                font-size: 13px;
+                font-size: 11px;
                 color: #20242a;
             }
 
@@ -1150,18 +1150,18 @@ class MainWindow(QMainWindow):
             QFrame#detailCard {
                 background: #ffffff;
                 border: 1px solid #d9dee5;
-                border-radius: 10px;
+                border-radius: 7px;
             }
 
             QLabel#appTitle {
-                font-size: 22px;
+                font-size: 18px;
                 font-weight: 700;
                 color: #1d232b;
-                padding-right: 8px;
+                padding-right: 4px;
             }
 
             QLabel#sectionTitle {
-                font-size: 16px;
+                font-size: 14px;
                 font-weight: 700;
                 color: #252b33;
             }
@@ -1169,17 +1169,17 @@ class MainWindow(QMainWindow):
             QLabel#versionLabel {
                 color: #67717d;
                 font-size: 12px;
-                padding: 3px 8px;
+                padding: 2px 6px;
                 background: #eef1f4;
                 border: 1px solid #d9dee5;
-                border-radius: 8px;
-                margin-right: 8px;
+                border-radius: 6px;
+                margin-right: 4px;
             }
 
             QLabel#fieldLabel {
                 font-weight: 600;
                 color: #333a43;
-                margin-top: 3px;
+                margin-top: 1px;
             }
 
             QLabel#mutedLabel,
@@ -1192,8 +1192,8 @@ class MainWindow(QMainWindow):
                 background: #f7f8fa;
                 color: #78828e;
                 border: 1px solid #d8dde4;
-                border-radius: 8px;
-                padding: 8px;
+                border-radius: 6px;
+                padding: 4px;
             }
 
             QLineEdit,
@@ -1203,8 +1203,8 @@ class MainWindow(QMainWindow):
                 background: #ffffff;
                 color: #20242a;
                 border: 1px solid #cfd5dc;
-                border-radius: 7px;
-                padding: 7px;
+                border-radius: 6px;
+                padding: 3px;
                 selection-background-color: #cfe0ff;
                 selection-color: #172033;
             }
@@ -1217,15 +1217,15 @@ class MainWindow(QMainWindow):
             }
 
             QLineEdit#searchBox {
-                padding: 9px 11px;
+                padding: 6px 8px;
             }
 
             QListWidget#categoryList {
-                padding: 5px;
+                padding: 3px;
             }
 
             QListWidget#categoryList::item {
-                padding: 8px 7px;
+                padding: 5px 6px;
                 border-radius: 6px;
             }
 
@@ -1239,7 +1239,7 @@ class MainWindow(QMainWindow):
             }
 
             QListWidget#mediaList {
-                padding: 10px;
+                padding: 5px;
                 background: #fbfcfd;
             }
 
@@ -1250,8 +1250,8 @@ class MainWindow(QMainWindow):
 
             QListWidget#mediaList::item {
                 border: 1px solid transparent;
-                border-radius: 8px;
-                padding: 5px;
+                border-radius: 6px;
+                padding: 3px;
             }
 
             QListWidget#mediaList::item:selected {
@@ -1268,8 +1268,8 @@ class MainWindow(QMainWindow):
                 background: #ffffff;
                 color: #252b33;
                 border: 1px solid #cbd2da;
-                border-radius: 7px;
-                padding: 8px 11px;
+                border-radius: 6px;
+                padding: 5px 8px;
             }
 
             QPushButton:hover {
@@ -1304,8 +1304,8 @@ class MainWindow(QMainWindow):
 
             QPushButton#miniButton,
             QPushButton#dangerMiniButton {
-                padding: 6px;
-                font-size: 16px;
+                padding: 3px;
+                font-size: 14px;
             }
 
             QMenu {
@@ -1316,7 +1316,7 @@ class MainWindow(QMainWindow):
             }
 
             QMenu::item {
-                padding: 7px 28px 7px 10px;
+                padding: 5px 22px 5px 8px;
                 border-radius: 5px;
             }
 
@@ -1455,11 +1455,11 @@ class MainWindow(QMainWindow):
         if path.exists() and media_type in {"image", "gif"}:
             pixmap = QPixmap(str(path))
             if not pixmap.isNull():
-                canvas = QPixmap(180, 125)
+                canvas = QPixmap(145, 96)
                 canvas.fill(QColor("#ffffff"))
                 scaled = pixmap.scaled(
-                    176,
-                    121,
+                    141,
+                    92,
                     Qt.KeepAspectRatio,
                     Qt.SmoothTransformation,
                 )
