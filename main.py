@@ -44,6 +44,8 @@ from PySide6.QtWidgets import (
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
+APP_VERSION = "0.4.0"
+
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
 DB_PATH = DATA_DIR / "media_notes.db"
@@ -729,7 +731,7 @@ class MainWindow(QMainWindow):
         self.recovery_thread: threading.Thread | None = None
         self.tracker_signals_connected = False
 
-        self.setWindowTitle("MediaNotes")
+        self.setWindowTitle(f"MediaNotes {APP_VERSION}")
         self.resize(1280, 820)
         self.setMinimumSize(950, 620)
 
@@ -874,6 +876,11 @@ class MainWindow(QMainWindow):
         title = QLabel("MediaNotes")
         title.setObjectName("appTitle")
         top_bar.addWidget(title)
+
+        version_label = QLabel(f"v{APP_VERSION}")
+        version_label.setObjectName("versionLabel")
+        version_label.setToolTip(f"Spuštěná verze MediaNotes {APP_VERSION}")
+        top_bar.addWidget(version_label)
 
         self.search_edit = QLineEdit()
         self.search_edit.setObjectName("searchBox")
@@ -1110,6 +1117,16 @@ class MainWindow(QMainWindow):
             QLabel#sectionTitle {
                 font-size: 16px;
                 font-weight: 700;
+            }
+
+            QLabel#versionLabel {
+                color: #7f8a96;
+                font-size: 12px;
+                padding: 3px 8px;
+                background: #1b222a;
+                border: 1px solid #303945;
+                border-radius: 8px;
+                margin-right: 8px;
             }
 
             QLabel#fieldLabel {
