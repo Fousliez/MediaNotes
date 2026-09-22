@@ -49,7 +49,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.5.2"
+APP_VERSION = "0.5.3"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1271,8 +1271,10 @@ class MainWindow(QMainWindow):
         self.thumbnail_combo.addItem("Malé náhledy", "small")
         self.thumbnail_combo.addItem("Střední náhledy", "medium")
         self.thumbnail_combo.addItem("Velké náhledy", "large")
+        self.thumbnail_combo.addItem("Extra velké náhledy", "xlarge")
+        self.thumbnail_combo.addItem("Obří náhledy", "huge")
         self.thumbnail_combo.setCurrentIndex(1)
-        self.thumbnail_combo.setFixedWidth(132)
+        self.thumbnail_combo.setFixedWidth(170)
         media_header.addWidget(self.thumbnail_combo)
 
         media_layout.addLayout(media_header)
@@ -1896,8 +1898,10 @@ class MainWindow(QMainWindow):
     def _thumbnail_dimensions(self) -> tuple[int, int, int, int]:
         sizes = {
             "small": (120, 80, 145, 110),
-            "large": (220, 146, 248, 182),
             "medium": (160, 106, 185, 140),
+            "large": (220, 146, 248, 182),
+            "xlarge": (300, 200, 330, 240),
+            "huge": (380, 250, 420, 300),
         }
         return sizes.get(self.thumbnail_mode, sizes["medium"])
 
@@ -1920,7 +1924,7 @@ class MainWindow(QMainWindow):
 
     def _on_thumbnail_mode_changed(self, _index: int) -> None:
         mode = self.thumbnail_combo.currentData()
-        if mode not in {"small", "medium", "large"}:
+        if mode not in {"small", "medium", "large", "xlarge", "huge"}:
             mode = "medium"
 
         self.thumbnail_mode = str(mode)
