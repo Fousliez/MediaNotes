@@ -49,7 +49,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.5.4"
+APP_VERSION = "0.5.5"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1281,6 +1281,13 @@ class MainWindow(QMainWindow):
 
         media_layout.addLayout(media_header)
 
+        media_header_separator = QFrame()
+        media_header_separator.setObjectName("mediaHeaderSeparator")
+        media_header_separator.setFrameShape(QFrame.HLine)
+        media_header_separator.setFrameShadow(QFrame.Plain)
+        media_header_separator.setFixedHeight(1)
+        media_layout.addWidget(media_header_separator)
+
         self.media_list = MediaListWidget()
         self.media_list.setContextMenuPolicy(Qt.CustomContextMenu)
         media_layout.addWidget(self.media_list, 1)
@@ -1495,6 +1502,11 @@ class MainWindow(QMainWindow):
                 background: #f8f9fb;
                 border: none;
                 border-radius: 0;
+            }
+
+            QFrame#mediaHeaderSeparator {
+                background: #d9dee5;
+                border: none;
             }
 
             QLabel#appTitle {
