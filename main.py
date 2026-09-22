@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.6.7"
+APP_VERSION = "0.6.8"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1455,14 +1455,14 @@ class MainWindow(QMainWindow):
         self.media_count_label.setObjectName("mutedLabel")
         media_header.addWidget(self.media_count_label)
 
+        media_header.addStretch(1)
+
         self.search_edit = QLineEdit()
         self.search_edit.setObjectName("searchBox")
         self.search_edit.setPlaceholderText("Hledat…")
         self.search_edit.setClearButtonEnabled(True)
-        self.search_edit.setMinimumWidth(210)
-        self.search_edit.setMaximumWidth(340)
-        media_header.addWidget(self.search_edit, 1)
-        media_header.addStretch()
+        self.search_edit.setFixedWidth(290)
+        media_header.addWidget(self.search_edit)
 
         self.type_filter_combo = QComboBox()
         self.type_filter_combo.setObjectName("filterCombo")
