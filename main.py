@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.6.6"
+APP_VERSION = "0.6.7"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1361,15 +1361,7 @@ class MainWindow(QMainWindow):
         title.setObjectName("appTitle")
         top_bar.addWidget(title)
 
-        self.search_edit = QLineEdit()
-        self.search_edit.setObjectName("searchBox")
-        self.search_edit.setPlaceholderText(
-            "Hledat v popiscích, poznámkách, kategoriích nebo názvech souborů…"
-        )
-        self.search_edit.setClearButtonEnabled(True)
-        self.search_edit.setMaximumWidth(430)
-        top_bar.addWidget(self.search_edit, 1)
-
+        top_bar.addStretch()
         root_layout.addLayout(top_bar)
 
         splitter = QSplitter(Qt.Horizontal)
@@ -1462,6 +1454,14 @@ class MainWindow(QMainWindow):
         self.media_count_label = QLabel("")
         self.media_count_label.setObjectName("mutedLabel")
         media_header.addWidget(self.media_count_label)
+
+        self.search_edit = QLineEdit()
+        self.search_edit.setObjectName("searchBox")
+        self.search_edit.setPlaceholderText("Hledat…")
+        self.search_edit.setClearButtonEnabled(True)
+        self.search_edit.setMinimumWidth(210)
+        self.search_edit.setMaximumWidth(340)
+        media_header.addWidget(self.search_edit, 1)
         media_header.addStretch()
 
         self.type_filter_combo = QComboBox()
@@ -1800,7 +1800,21 @@ class MainWindow(QMainWindow):
             }
 
             QLineEdit#searchBox {
-                padding: 6px 8px;
+                background: #f3f5f7;
+                border: 1px solid #d9dee5;
+                border-radius: 10px;
+                padding: 5px 9px;
+                min-height: 20px;
+            }
+
+            QLineEdit#searchBox:hover {
+                background: #eceff3;
+                border-color: #cbd2da;
+            }
+
+            QLineEdit#searchBox:focus {
+                background: #ffffff;
+                border: 1px solid #8aabe0;
             }
 
             QComboBox#filterCombo {
