@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.7.9"
+APP_VERSION = "0.8.0"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1488,19 +1488,21 @@ class MainWindow(QMainWindow):
         self.sort_combo = QComboBox()
         self.sort_combo.setObjectName("filterCombo")
         self.sort_combo.setToolTip("Řazení galerie")
-        self.sort_combo.addItem("Nejnovější", "newest")
-        self.sort_combo.addItem("Nejstarší", "oldest")
-        self.sort_combo.addItem("Název A–Z", "name_asc")
-        self.sort_combo.addItem("Název Z–A", "name_desc")
+        self.sort_combo.addItem("Datum", "date")
+        self.sort_combo.addItem("Název", "name")
         self.sort_combo.addItem("Hodnocení", "rating")
         self.sort_combo.setCurrentIndex(0)
         self.sort_combo.setFixedWidth(145)
+        self.sort_combo.setStyleSheet(
+            "QComboBox::drop-down { width: 0px; border: none; }"
+            "QComboBox::down-arrow { image: none; width: 0px; height: 0px; }"
+        )
 
         self.sort_direction_btn = QPushButton("↓", self.sort_combo)
         self.sort_direction_btn.setObjectName("sortDirectionButton")
         self.sort_direction_btn.setToolTip("Otočit směr řazení")
-        self.sort_direction_btn.setFixedSize(22, 24)
-        self.sort_direction_btn.move(97, 3)
+        self.sort_direction_btn.setFixedSize(44, 28)
+        self.sort_direction_btn.move(101, 1)
         self.sort_direction_btn.setFocusPolicy(Qt.NoFocus)
         self.sort_direction_btn.raise_()
 
@@ -1867,22 +1869,41 @@ class MainWindow(QMainWindow):
             }
 
             QPushButton#sortDirectionButton {
-                background: transparent;
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba(243,245,247,0),
+                    stop:0.45 rgba(243,245,247,220),
+                    stop:0.72 #f3f5f7,
+                    stop:1 #f3f5f7
+                );
                 color: #59636f;
                 border: none;
-                border-radius: 5px;
-                padding: 0;
+                border-radius: 0 10px 10px 0;
+                padding: 0 7px 0 14px;
+                text-align: right;
                 font-size: 16px;
                 font-weight: 700;
             }
 
             QPushButton#sortDirectionButton:hover {
-                background: #e3e7ec;
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba(236,239,243,0),
+                    stop:0.45 rgba(236,239,243,220),
+                    stop:0.72 #eceff3,
+                    stop:1 #eceff3
+                );
                 color: #252b33;
             }
 
             QPushButton#sortDirectionButton:pressed {
-                background: #d8dde3;
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba(225,229,234,0),
+                    stop:0.45 rgba(225,229,234,220),
+                    stop:0.72 #e1e5ea,
+                    stop:1 #e1e5ea
+                );
             }
 
             QComboBox#filterCombo:focus,
@@ -2260,21 +2281,15 @@ class MainWindow(QMainWindow):
                 if str(row["media_type"]) == str(media_type)
             ]
 
-        sort_mode = self.sort_combo.currentData() or "newest"
-        if sort_mode == "oldest":
-            rows.sort(key=lambda row: int(row["id"]))
-        elif sort_mode == "name_asc":
-            rows.sort(
-                key=lambda row: (
-                    str(row["caption"]).strip() or Path(row["path"]).name
-                ).casefold()
-            )
-        elif sort_mode == "name_desc":
+        sort_mode = self.sort_combo.currentData() or "date"
+        reverse = bool(self.sort_descending)
+
+        if sort_mode == "name":
             rows.sort(
                 key=lambda row: (
                     str(row["caption"]).strip() or Path(row["path"]).name
                 ).casefold(),
-                reverse=True,
+                reverse=reverse,
             )
         elif sort_mode == "rating":
             rows.sort(
@@ -2282,10 +2297,13 @@ class MainWindow(QMainWindow):
                     int(row["rating"] or 0),
                     int(row["id"]),
                 ),
-                reverse=bool(self.sort_descending),
+                reverse=reverse,
             )
         else:
-            rows.sort(key=lambda row: int(row["id"]), reverse=True)
+            rows.sort(
+                key=lambda row: int(row["id"]),
+                reverse=reverse,
+            )
 
         self.media_list.blockSignals(True)
         self.media_list.clear()
@@ -2343,41 +2361,19 @@ class MainWindow(QMainWindow):
             self.clear_detail()
 
     def _update_sort_direction_button(self) -> None:
-        mode = self.sort_combo.currentData() or "newest"
-        if mode in {"newest", "name_desc"}:
-            descending = True
-        elif mode in {"oldest", "name_asc"}:
-            descending = False
-        else:
-            descending = bool(self.sort_descending)
-
-        self.sort_direction_btn.setText("↓" if descending else "↑")
-        self.sort_direction_btn.setToolTip("Otočit směr řazení")
+        self.sort_direction_btn.setText(
+            "↓" if self.sort_descending else "↑"
+        )
+        self.sort_direction_btn.setToolTip(
+            "Směr řazení: "
+            + ("sestupně" if self.sort_descending else "vzestupně")
+        )
 
     def _on_sort_changed(self, _index: int) -> None:
-        mode = self.sort_combo.currentData() or "newest"
-        if mode in {"newest", "name_desc"}:
-            self.sort_descending = True
-        elif mode in {"oldest", "name_asc"}:
-            self.sort_descending = False
         self._update_sort_direction_button()
         self.reload_media(select_media_id=self.current_media_id)
 
     def toggle_sort_direction(self) -> None:
-        mode = self.sort_combo.currentData() or "newest"
-        opposite = {
-            "newest": "oldest",
-            "oldest": "newest",
-            "name_asc": "name_desc",
-            "name_desc": "name_asc",
-        }.get(mode)
-
-        if opposite is not None:
-            index = self.sort_combo.findData(opposite)
-            if index >= 0:
-                self.sort_combo.setCurrentIndex(index)
-            return
-
         self.sort_descending = not self.sort_descending
         self._update_sort_direction_button()
         self.reload_media(select_media_id=self.current_media_id)
