@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.7.6"
+APP_VERSION = "0.7.7"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -536,6 +536,14 @@ class Database:
             WHERE id = ?
             """,
             (caption, notes, category_id, rating, media_id),
+        )
+        self.conn.commit()
+
+    def update_media_rating(self, media_id: int, rating: int) -> None:
+        rating = max(0, min(3, int(rating)))
+        self.conn.execute(
+            "UPDATE media SET rating = ? WHERE id = ?",
+            (rating, media_id),
         )
         self.conn.commit()
 
@@ -2692,8 +2700,46 @@ class MainWindow(QMainWindow):
 
         rating = max(1, min(3, int(rating)))
         self.current_rating = 0 if self.current_rating == rating else rating
+        self.db.update_media_rating(self.current_media_id, self.current_rating)
         self._refresh_rating_buttons()
-        self._on_detail_edited()
+
+        if self.loaded_detail_state is not None:
+            caption, notes, category_id, _old_rating = self.loaded_detail_state
+            self.loaded_detail_state = (
+                caption,
+                notes,
+                category_id,
+                self.current_rating,
+            )
+
+        item = self.media_list.currentItem()
+        if item is not None:
+            row = self.db.media_by_id(self.current_media_id)
+            if row is not None:
+                caption = str(row["caption"]).strip()
+                if caption and self.current_rating:
+                    display_title = f"{'★' * self.current_rating} {caption}"
+                elif caption:
+                    display_title = caption
+                elif self.current_rating:
+                    display_title = "★" * self.current_rating
+                else:
+                    display_title = ""
+                item.setText(display_title)
+
+                rating_text = (
+                    "★" * self.current_rating
+                    if self.current_rating
+                    else "bez hodnocení"
+                )
+                item.setToolTip(
+                    f"Kategorie: {row['category_name']}\n"
+                    f"Hodnocení: {rating_text}"
+                )
+
+        self.save_feedback_active = False
+        self._update_save_button_state()
+        self.statusBar().showMessage("Hodnocení uloženo.", 1500)
 
     def _refresh_rating_buttons(self) -> None:
         for index, button in enumerate(self.rating_buttons, start=1):
