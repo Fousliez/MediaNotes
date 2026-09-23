@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.8.0"
+APP_VERSION = "0.8.1"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1501,8 +1501,8 @@ class MainWindow(QMainWindow):
         self.sort_direction_btn = QPushButton("↓", self.sort_combo)
         self.sort_direction_btn.setObjectName("sortDirectionButton")
         self.sort_direction_btn.setToolTip("Otočit směr řazení")
-        self.sort_direction_btn.setFixedSize(44, 28)
-        self.sort_direction_btn.move(101, 1)
+        self.sort_direction_btn.setFixedSize(32, 28)
+        self.sort_direction_btn.move(113, 1)
         self.sort_direction_btn.setFocusPolicy(Qt.NoFocus)
         self.sort_direction_btn.raise_()
 
@@ -1872,14 +1872,14 @@ class MainWindow(QMainWindow):
                 background: qlineargradient(
                     x1:0, y1:0, x2:1, y2:0,
                     stop:0 rgba(243,245,247,0),
-                    stop:0.45 rgba(243,245,247,220),
-                    stop:0.72 #f3f5f7,
-                    stop:1 #f3f5f7
+                    stop:0.40 rgba(220,225,231,95),
+                    stop:0.68 rgba(220,225,231,185),
+                    stop:1 #e7ebef
                 );
                 color: #59636f;
                 border: none;
                 border-radius: 0 10px 10px 0;
-                padding: 0 7px 0 14px;
+                padding: 0 5px 0 8px;
                 text-align: right;
                 font-size: 16px;
                 font-weight: 700;
@@ -1889,9 +1889,9 @@ class MainWindow(QMainWindow):
                 background: qlineargradient(
                     x1:0, y1:0, x2:1, y2:0,
                     stop:0 rgba(236,239,243,0),
-                    stop:0.45 rgba(236,239,243,220),
-                    stop:0.72 #eceff3,
-                    stop:1 #eceff3
+                    stop:0.40 rgba(205,212,220,120),
+                    stop:0.68 rgba(205,212,220,205),
+                    stop:1 #dfe4e9
                 );
                 color: #252b33;
             }
@@ -1900,9 +1900,9 @@ class MainWindow(QMainWindow):
                 background: qlineargradient(
                     x1:0, y1:0, x2:1, y2:0,
                     stop:0 rgba(225,229,234,0),
-                    stop:0.45 rgba(225,229,234,220),
-                    stop:0.72 #e1e5ea,
-                    stop:1 #e1e5ea
+                    stop:0.40 rgba(195,202,211,145),
+                    stop:0.68 rgba(195,202,211,220),
+                    stop:1 #d5dbe1
                 );
             }
 
