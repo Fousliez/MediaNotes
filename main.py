@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.7.7"
+APP_VERSION = "0.7.8"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1181,6 +1181,7 @@ class MainWindow(QMainWindow):
         self.loaded_detail_state: tuple[str, str, int, int] | None = None
         self.loading_detail = False
         self.thumbnail_mode = "medium"
+        self.sort_descending = True
         self.save_feedback_active = False
         self.notebook_dialog: NotebookDialog | None = None
 
@@ -1486,11 +1487,9 @@ class MainWindow(QMainWindow):
 
         self.sort_combo = QComboBox()
         self.sort_combo.setObjectName("filterCombo")
-        self.sort_combo.setToolTip("Řazení galerie")
-        self.sort_combo.addItem("Nejnovější", "newest")
-        self.sort_combo.addItem("Nejstarší", "oldest")
-        self.sort_combo.addItem("Název A–Z", "name_asc")
-        self.sort_combo.addItem("Název Z–A", "name_desc")
+        self.sort_combo.setToolTip("Řadit podle")
+        self.sort_combo.addItem("Datum", "date")
+        self.sort_combo.addItem("Název", "name")
         self.sort_combo.addItem("Hodnocení", "rating")
         self.sort_combo.setCurrentIndex(0)
         self.sort_combo.setFixedWidth(118)
@@ -1507,6 +1506,12 @@ class MainWindow(QMainWindow):
         self.thumbnail_combo.setCurrentIndex(1)
         self.thumbnail_combo.setFixedWidth(170)
         media_header.addWidget(self.thumbnail_combo)
+
+        self.sort_direction_btn = QPushButton("↓")
+        self.sort_direction_btn.setObjectName("sortDirectionButton")
+        self.sort_direction_btn.setToolTip("Směr řazení: sestupně")
+        self.sort_direction_btn.setFixedSize(34, 30)
+        media_header.addWidget(self.sort_direction_btn)
 
         media_layout.addLayout(media_header)
 
@@ -1693,6 +1698,7 @@ class MainWindow(QMainWindow):
         self.sort_combo.currentIndexChanged.connect(
             lambda _index: self.reload_media()
         )
+        self.sort_direction_btn.clicked.connect(self.toggle_sort_direction)
         self.thumbnail_combo.currentIndexChanged.connect(
             self._on_thumbnail_mode_changed
         )
@@ -1855,6 +1861,25 @@ class MainWindow(QMainWindow):
             QComboBox#filterCombo:hover {
                 background: #eceff3;
                 border-color: #cbd2da;
+            }
+
+            QPushButton#sortDirectionButton {
+                background: #f3f5f7;
+                color: #2b3138;
+                border: 1px solid #d9dee5;
+                border-radius: 10px;
+                padding: 0;
+                font-size: 17px;
+                font-weight: 700;
+            }
+
+            QPushButton#sortDirectionButton:hover {
+                background: #eceff3;
+                border-color: #cbd2da;
+            }
+
+            QPushButton#sortDirectionButton:pressed {
+                background: #e1e5ea;
             }
 
             QComboBox#filterCombo:focus,
@@ -2232,21 +2257,15 @@ class MainWindow(QMainWindow):
                 if str(row["media_type"]) == str(media_type)
             ]
 
-        sort_mode = self.sort_combo.currentData() or "newest"
-        if sort_mode == "oldest":
-            rows.sort(key=lambda row: int(row["id"]))
-        elif sort_mode == "name_asc":
-            rows.sort(
-                key=lambda row: (
-                    str(row["caption"]).strip() or Path(row["path"]).name
-                ).casefold()
-            )
-        elif sort_mode == "name_desc":
+        sort_mode = self.sort_combo.currentData() or "date"
+        reverse = bool(self.sort_descending)
+
+        if sort_mode == "name":
             rows.sort(
                 key=lambda row: (
                     str(row["caption"]).strip() or Path(row["path"]).name
                 ).casefold(),
-                reverse=True,
+                reverse=reverse,
             )
         elif sort_mode == "rating":
             rows.sort(
@@ -2254,10 +2273,13 @@ class MainWindow(QMainWindow):
                     int(row["rating"] or 0),
                     int(row["id"]),
                 ),
-                reverse=True,
+                reverse=reverse,
             )
         else:
-            rows.sort(key=lambda row: int(row["id"]), reverse=True)
+            rows.sort(
+                key=lambda row: int(row["id"]),
+                reverse=reverse,
+            )
 
         self.media_list.blockSignals(True)
         self.media_list.clear()
@@ -2313,6 +2335,16 @@ class MainWindow(QMainWindow):
             self.on_media_changed(self.media_list.currentItem(), None)
         else:
             self.clear_detail()
+
+    def toggle_sort_direction(self) -> None:
+        self.sort_descending = not self.sort_descending
+        if self.sort_descending:
+            self.sort_direction_btn.setText("↓")
+            self.sort_direction_btn.setToolTip("Směr řazení: sestupně")
+        else:
+            self.sort_direction_btn.setText("↑")
+            self.sort_direction_btn.setToolTip("Směr řazení: vzestupně")
+        self.reload_media(select_media_id=self.current_media_id)
 
     def _thumbnail_dimensions(self) -> tuple[int, int, int, int]:
         sizes = {
