@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.0"
+APP_VERSION = "0.9.1"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1646,13 +1646,15 @@ class MainWindow(QMainWindow):
         self.mute_btn.setVisible(False)
         preview_actions.addWidget(self.mute_btn)
 
-        self.open_btn = QPushButton("Otevřít soubor")
+        self.open_btn = QPushButton("Otevřít")
         self.open_btn.setEnabled(False)
-        preview_actions.addWidget(self.open_btn)
 
-        self.open_path_btn = QPushButton("Otevřít cestu")
-        self.open_path_btn.setEnabled(False)
-        preview_actions.addWidget(self.open_path_btn)
+        self.open_menu = QMenu(self.open_btn)
+        self.open_file_action = self.open_menu.addAction("Soubor")
+        self.open_path_action = self.open_menu.addAction("Cestu")
+        self.open_btn.setMenu(self.open_menu)
+
+        preview_actions.addWidget(self.open_btn)
 
         preview_actions.addStretch()
         detail_layout.addLayout(preview_actions)
@@ -1745,8 +1747,8 @@ class MainWindow(QMainWindow):
 
         self.save_btn.clicked.connect(self.save_current)
         self.delete_media_btn.clicked.connect(self.delete_selected_media)
-        self.open_btn.clicked.connect(self.open_current)
-        self.open_path_btn.clicked.connect(self.open_current_path)
+        self.open_file_action.triggered.connect(self.open_current)
+        self.open_path_action.triggered.connect(self.open_current_path)
         self.play_pause_btn.clicked.connect(self.toggle_video_playback)
         self.mute_btn.clicked.connect(self.toggle_video_mute)
         self.media_player.playbackStateChanged.connect(
@@ -2739,8 +2741,11 @@ class MainWindow(QMainWindow):
 
             path = Path(row["path"])
             self.show_preview(path, row["media_type"])
-            self.open_btn.setEnabled(path.exists())
-            self.open_path_btn.setEnabled(path.parent.exists())
+            file_exists = path.exists()
+            folder_exists = path.parent.exists()
+            self.open_file_action.setEnabled(file_exists)
+            self.open_path_action.setEnabled(folder_exists)
+            self.open_btn.setEnabled(file_exists or folder_exists)
         finally:
             self.loading_detail = False
 
@@ -3308,8 +3313,9 @@ class MainWindow(QMainWindow):
         for button in self.rating_buttons:
             button.setEnabled(False)
 
+        self.open_file_action.setEnabled(False)
+        self.open_path_action.setEnabled(False)
         self.open_btn.setEnabled(False)
-        self.open_path_btn.setEnabled(False)
         self.save_btn.setProperty("dirty", False)
         self.save_btn.setProperty("saved", False)
         self.save_btn.setText("Uložit změny")
