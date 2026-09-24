@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.8.3"
+APP_VERSION = "0.8.4"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1900,14 +1900,7 @@ class MainWindow(QMainWindow):
             }
 
             QFrame#sortDirectionSeparator {
-                background: qlineargradient(
-                    x1:0, y1:0, x2:0, y2:1,
-                    stop:0 rgba(155,164,174,0),
-                    stop:0.20 rgba(155,164,174,90),
-                    stop:0.50 rgba(125,135,146,220),
-                    stop:0.80 rgba(155,164,174,90),
-                    stop:1 rgba(155,164,174,0)
-                );
+                background: rgba(145,154,164,150);
                 border: none;
             }
 
