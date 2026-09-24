@@ -4,6 +4,12 @@ set -e
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$APP_DIR"
 
+# Jednorázově přejmenuj existující položku v nabídce aplikací.
+LEGACY_DESKTOP="$HOME/.local/share/applications/medianotes.desktop"
+if [ -f "$LEGACY_DESKTOP" ]; then
+    sed -i 's/^Name=MediaNotes$/Name=Zobrazovač/' "$LEGACY_DESKTOP" 2>/dev/null || true
+fi
+
 # Lokální pracovní kopie je určená pro běh aplikace.
 # Při spuštění ji srovnáme s aktuální větví origin/main.
 if [ -d ".git" ]; then
