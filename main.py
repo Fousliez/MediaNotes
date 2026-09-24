@@ -52,7 +52,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.12"
+APP_VERSION = "0.9.13"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1383,7 +1383,7 @@ class MainWindow(QMainWindow):
         self.expanded_category_ids: set[int] = set()
 
         self.audio_output = QAudioOutput(self)
-        self.audio_output.setMuted(False)
+        self.audio_output.setMuted(True)
         self.media_player = QMediaPlayer(self)
         self.media_player.setAudioOutput(self.audio_output)
 
