@@ -52,7 +52,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.3"
+APP_VERSION = "0.9.4"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1038,6 +1038,20 @@ class NotebookDialog(QDialog):
 
         self.shortcut_save = QShortcut(QKeySequence("Ctrl+S"), self)
         self.shortcut_save.activated.connect(self.save)
+
+        self.shortcut_enter_save = QShortcut(QKeySequence(Qt.Key_Return), self)
+        self.shortcut_enter_save.activated.connect(self._save_with_enter)
+
+        self.shortcut_numpad_enter_save = QShortcut(
+            QKeySequence(Qt.Key_Enter),
+            self,
+        )
+        self.shortcut_numpad_enter_save.activated.connect(self._save_with_enter)
+
+    def _save_with_enter(self) -> None:
+        if QApplication.focusWidget() is self.editor and not self.editor.isReadOnly():
+            return
+        self.save()
 
     def _set_editing(self, editing: bool) -> None:
         self.editing = bool(editing)
@@ -2216,11 +2230,30 @@ class MainWindow(QMainWindow):
         self.shortcut_save = QShortcut(QKeySequence("Ctrl+S"), self)
         self.shortcut_save.activated.connect(self.save_current)
 
+        self.shortcut_enter_save = QShortcut(QKeySequence(Qt.Key_Return), self)
+        self.shortcut_enter_save.activated.connect(self._save_current_with_enter)
+
+        self.shortcut_numpad_enter_save = QShortcut(
+            QKeySequence(Qt.Key_Enter),
+            self,
+        )
+        self.shortcut_numpad_enter_save.activated.connect(
+            self._save_current_with_enter
+        )
+
         self.shortcut_search = QShortcut(QKeySequence("Ctrl+F"), self)
         self.shortcut_search.activated.connect(self.search_edit.setFocus)
 
         self.shortcut_delete = QShortcut(QKeySequence("Delete"), self)
         self.shortcut_delete.activated.connect(self.delete_selected_media)
+
+    def _save_current_with_enter(self) -> None:
+        if (
+            QApplication.focusWidget() is self.notes_edit
+            and not self.notes_edit.isReadOnly()
+        ):
+            return
+        self.save_current()
 
     def reload_categories(self, keep_category_id: int | None = None) -> None:
         if keep_category_id is None:
