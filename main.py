@@ -52,7 +52,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.4"
+APP_VERSION = "0.9.5"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1233,7 +1233,7 @@ class MainWindow(QMainWindow):
         self.recovery_thread: threading.Thread | None = None
         self.tracker_signals_connected = False
 
-        self.setWindowTitle(f"MediaNotes v{APP_VERSION}")
+        self.setWindowTitle(f"Zobrazovač v{APP_VERSION}")
         self.setAcceptDrops(True)
         self.resize(1180, 740)
         self.setMinimumSize(850, 560)
@@ -1420,7 +1420,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.setContentsMargins(3, 5, 5, 4)
         sidebar_layout.setSpacing(3)
 
-        title = QLabel("MediaNotes")
+        title = QLabel("Zobrazovač")
         title.setObjectName("appTitle")
         sidebar_layout.addWidget(title)
 
@@ -3416,7 +3416,7 @@ class MainWindow(QMainWindow):
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("MediaNotes")
+    app.setApplicationName("Zobrazovač")
     app.setStyle("Fusion")
 
     window = MainWindow()
