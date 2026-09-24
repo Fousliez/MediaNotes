@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.8.2"
+APP_VERSION = "0.8.3"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1507,8 +1507,8 @@ class MainWindow(QMainWindow):
 
         self.sort_direction_separator = QFrame(self.sort_direction_btn)
         self.sort_direction_separator.setObjectName("sortDirectionSeparator")
-        self.sort_direction_separator.setFixedSize(2, 20)
-        self.sort_direction_separator.move(0, 4)
+        self.sort_direction_separator.setFixedSize(1, 28)
+        self.sort_direction_separator.move(0, 0)
         self.sort_direction_separator.setAttribute(
             Qt.WA_TransparentForMouseEvents,
             True,
