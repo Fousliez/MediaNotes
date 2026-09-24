@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.8.4"
+APP_VERSION = "0.8.5"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1884,8 +1884,8 @@ class MainWindow(QMainWindow):
                 color: #59636f;
                 border: none;
                 border-radius: 0 10px 10px 0;
-                padding: 0 5px 0 8px;
-                text-align: right;
+                padding: 0;
+                text-align: center;
                 font-size: 16px;
                 font-weight: 700;
             }
