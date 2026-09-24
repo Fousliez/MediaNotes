@@ -1,6 +1,6 @@
-# MediaNotes
+# Zobrazovač
 
-Desktopová aplikace pro vlastní knihovnu obrázků, GIFů a krátkých videí s popisky a poznámkami.
+Zobrazovač je desktopová aplikace pro vlastní knihovnu obrázků, GIFů a krátkých videí s popisky a poznámkami.
 
 ## Co umí
 
