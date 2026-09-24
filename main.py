@@ -52,7 +52,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.9"
+APP_VERSION = "0.9.10"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -2450,12 +2450,6 @@ class MainWindow(QMainWindow):
             for row in rows
             if row["parent_id"] is None
         }
-        parent_ids_with_children = {
-            int(row["parent_id"])
-            for row in rows
-            if row["parent_id"] is not None
-        }
-
         for row_index, row in enumerate(rows, start=1):
             category_id = int(row["id"])
             name = str(row["name"])
@@ -2467,15 +2461,7 @@ class MainWindow(QMainWindow):
             )
 
             if parent_id is None:
-                if category_id in parent_ids_with_children:
-                    arrow = (
-                        "▾"
-                        if category_id in self.expanded_category_ids
-                        else "▸"
-                    )
-                    display_text = f"{arrow} {name}  ·  {count}"
-                else:
-                    display_text = f"{name}  ·  {count}"
+                display_text = f"{name}  ·  {count}"
                 path_name = name
             else:
                 display_text = f"    ↳ {name}  ·  {count}"
