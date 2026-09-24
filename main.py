@@ -52,7 +52,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.10"
+APP_VERSION = "0.9.11"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1349,6 +1349,7 @@ class GuardedNoteEdit(QTextEdit):
 
 class CategoryDelegate(QStyledItemDelegate):
     def paint(self, painter, option, index) -> None:
+        option.state = option.state & ~QStyle.State_HasFocus
         super().paint(painter, option, index)
 
         if index.row() == 0:
@@ -2464,7 +2465,7 @@ class MainWindow(QMainWindow):
                 display_text = f"{name}  ·  {count}"
                 path_name = name
             else:
-                display_text = f"    ↳ {name}  ·  {count}"
+                display_text = f"    {name}  ·  {count}"
                 parent_name = parent_names.get(parent_id, "")
                 path_name = (
                     f"{parent_name} › {name}"
