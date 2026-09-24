@@ -52,7 +52,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.7"
+APP_VERSION = "0.9.8"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -165,7 +165,9 @@ class Database:
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-                sort_order INTEGER NOT NULL DEFAULT 0
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                parent_id INTEGER,
+                FOREIGN KEY (parent_id) REFERENCES categories(id)
             );
 
             CREATE TABLE IF NOT EXISTS media (
@@ -205,6 +207,15 @@ class Database:
             self.conn.execute(
                 "ALTER TABLE categories ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
             )
+        if "parent_id" not in category_columns:
+            self.conn.execute(
+                "ALTER TABLE categories ADD COLUMN parent_id INTEGER"
+            )
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_categories_parent "
+            "ON categories(parent_id)"
+        )
 
         media_columns = {
             row["name"]
@@ -263,22 +274,56 @@ class Database:
     def _ensure_default_category(self) -> None:
         self.conn.execute(
             """
-            INSERT OR IGNORE INTO categories(name, sort_order)
-            VALUES (?, COALESCE((SELECT MAX(sort_order) + 1 FROM categories), 0))
+            INSERT OR IGNORE INTO categories(name, sort_order, parent_id)
+            VALUES (
+                ?,
+                COALESCE(
+                    (
+                        SELECT MAX(sort_order) + 1
+                        FROM categories
+                        WHERE parent_id IS NULL
+                    ),
+                    0
+                ),
+                NULL
+            )
             """,
             ("Nezařazené",),
         )
         self.conn.commit()
 
     def _normalize_category_order(self) -> None:
-        rows = self.conn.execute(
-            "SELECT id FROM categories ORDER BY sort_order, id"
+        parent_rows = self.conn.execute(
+            "SELECT DISTINCT parent_id FROM categories"
         ).fetchall()
-        for index, row in enumerate(rows):
-            self.conn.execute(
-                "UPDATE categories SET sort_order = ? WHERE id = ?",
-                (index, int(row["id"])),
-            )
+
+        for parent_row in parent_rows:
+            parent_id = parent_row["parent_id"]
+            if parent_id is None:
+                rows = self.conn.execute(
+                    """
+                    SELECT id
+                    FROM categories
+                    WHERE parent_id IS NULL
+                    ORDER BY sort_order, id
+                    """
+                ).fetchall()
+            else:
+                rows = self.conn.execute(
+                    """
+                    SELECT id
+                    FROM categories
+                    WHERE parent_id = ?
+                    ORDER BY sort_order, id
+                    """,
+                    (int(parent_id),),
+                ).fetchall()
+
+            for index, row in enumerate(rows):
+                self.conn.execute(
+                    "UPDATE categories SET sort_order = ? WHERE id = ?",
+                    (index, int(row["id"])),
+                )
         self.conn.commit()
 
     def default_category_id(self) -> int:
@@ -289,31 +334,118 @@ class Database:
         return int(row["id"])
 
     def categories(self):
-        return self.conn.execute(
+        rows = self.conn.execute(
             """
             SELECT
                 c.id,
                 c.name,
                 c.sort_order,
+                c.parent_id,
                 COUNT(m.id) AS media_count
             FROM categories c
             LEFT JOIN media m ON m.category_id = c.id
-            GROUP BY c.id, c.name, c.sort_order
-            ORDER BY c.sort_order, c.id
+            GROUP BY c.id, c.name, c.sort_order, c.parent_id
             """
         ).fetchall()
+
+        parents = sorted(
+            (row for row in rows if row["parent_id"] is None),
+            key=lambda row: (int(row["sort_order"]), int(row["id"])),
+        )
+        children_by_parent: dict[int, list] = {}
+        for row in rows:
+            if row["parent_id"] is None:
+                continue
+            children_by_parent.setdefault(int(row["parent_id"]), []).append(row)
+
+        ordered = []
+        for parent in parents:
+            ordered.append(parent)
+            children = children_by_parent.get(int(parent["id"]), [])
+            children.sort(
+                key=lambda row: (int(row["sort_order"]), int(row["id"]))
+            )
+            ordered.extend(children)
+
+        return ordered
+
+    def category_by_id(self, category_id: int):
+        return self.conn.execute(
+            """
+            SELECT id, name, sort_order, parent_id
+            FROM categories
+            WHERE id = ?
+            """,
+            (category_id,),
+        ).fetchone()
+
+    def category_path_name(self, category_id: int) -> str:
+        row = self.category_by_id(category_id)
+        if row is None:
+            return ""
+
+        name = str(row["name"])
+        parent_id = row["parent_id"]
+        if parent_id is None:
+            return name
+
+        parent = self.category_by_id(int(parent_id))
+        if parent is None:
+            return name
+        return f"{parent['name']} › {name}"
+
+    def has_subcategories(self, category_id: int) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM categories WHERE parent_id = ? LIMIT 1",
+            (category_id,),
+        ).fetchone()
+        return row is not None
 
     def total_media_count(self) -> int:
         row = self.conn.execute("SELECT COUNT(*) AS n FROM media").fetchone()
         return int(row["n"])
 
-    def add_category(self, name: str) -> int:
-        next_order = self.conn.execute(
-            "SELECT COALESCE(MAX(sort_order) + 1, 0) AS n FROM categories"
-        ).fetchone()["n"]
+    def add_category(
+        self,
+        name: str,
+        parent_id: int | None = None,
+    ) -> int:
+        if parent_id is not None:
+            parent = self.category_by_id(int(parent_id))
+            if parent is None:
+                raise ValueError("Nadřazená kategorie neexistuje.")
+            if parent["parent_id"] is not None:
+                raise ValueError(
+                    "Podkategorie může být zatím jen jednu úroveň hluboko."
+                )
+            if int(parent_id) == self.default_category_id():
+                raise ValueError(
+                    "Do kategorie „Nezařazené“ nelze přidat podkategorii."
+                )
+
+            next_order = self.conn.execute(
+                """
+                SELECT COALESCE(MAX(sort_order) + 1, 0) AS n
+                FROM categories
+                WHERE parent_id = ?
+                """,
+                (int(parent_id),),
+            ).fetchone()["n"]
+        else:
+            next_order = self.conn.execute(
+                """
+                SELECT COALESCE(MAX(sort_order) + 1, 0) AS n
+                FROM categories
+                WHERE parent_id IS NULL
+                """
+            ).fetchone()["n"]
+
         cursor = self.conn.execute(
-            "INSERT INTO categories(name, sort_order) VALUES (?, ?)",
-            (name, int(next_order)),
+            """
+            INSERT INTO categories(name, sort_order, parent_id)
+            VALUES (?, ?, ?)
+            """,
+            (name, int(next_order), parent_id),
         )
         self.conn.commit()
         return int(cursor.lastrowid)
@@ -328,11 +460,32 @@ class Database:
         self.conn.commit()
 
     def move_category(self, category_id: int, direction: int) -> bool:
-        rows = self.conn.execute(
-            "SELECT id, sort_order FROM categories ORDER BY sort_order, id"
-        ).fetchall()
-        ids = [int(row["id"]) for row in rows]
+        category = self.category_by_id(category_id)
+        if category is None:
+            return False
 
+        parent_id = category["parent_id"]
+        if parent_id is None:
+            rows = self.conn.execute(
+                """
+                SELECT id, sort_order
+                FROM categories
+                WHERE parent_id IS NULL
+                ORDER BY sort_order, id
+                """
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                """
+                SELECT id, sort_order
+                FROM categories
+                WHERE parent_id = ?
+                ORDER BY sort_order, id
+                """,
+                (int(parent_id),),
+            ).fetchall()
+
+        ids = [int(row["id"]) for row in rows]
         if category_id not in ids:
             return False
 
@@ -359,6 +512,11 @@ class Database:
         default_id = self.default_category_id()
         if category_id == default_id:
             raise ValueError("Výchozí kategorii „Nezařazené“ nelze smazat.")
+        if self.has_subcategories(category_id):
+            raise ValueError(
+                "Kategorie obsahuje podkategorie. "
+                "Nejdřív smaž nebo přesuň její podkategorie."
+            )
 
         self.conn.execute(
             "UPDATE media SET category_id = ? WHERE category_id = ?",
@@ -2285,17 +2443,43 @@ class MainWindow(QMainWindow):
         self.category_list.addItem(all_item)
 
         selected_row = 0
-        for row_index, row in enumerate(self.db.categories(), start=1):
+        rows = self.db.categories()
+        parent_names = {
+            int(row["id"]): str(row["name"])
+            for row in rows
+            if row["parent_id"] is None
+        }
+
+        for row_index, row in enumerate(rows, start=1):
             category_id = int(row["id"])
             name = str(row["name"])
             count = int(row["media_count"])
+            parent_id = (
+                None
+                if row["parent_id"] is None
+                else int(row["parent_id"])
+            )
 
-            item = QListWidgetItem(f"{name}  ·  {count}")
+            if parent_id is None:
+                display_text = f"{name}  ·  {count}"
+                path_name = name
+            else:
+                display_text = f"    ↳ {name}  ·  {count}"
+                parent_name = parent_names.get(parent_id, "")
+                path_name = (
+                    f"{parent_name} › {name}"
+                    if parent_name
+                    else name
+                )
+
+            item = QListWidgetItem(display_text)
             item.setData(Qt.UserRole, category_id)
             item.setData(Qt.UserRole + 1, name)
+            item.setData(Qt.UserRole + 2, parent_id)
+            item.setData(Qt.UserRole + 3, path_name)
             self.category_list.addItem(item)
 
-            self.category_combo.addItem(name, category_id)
+            self.category_combo.addItem(path_name, category_id)
 
             if keep_category_id == category_id:
                 selected_row = row_index
@@ -2313,7 +2497,14 @@ class MainWindow(QMainWindow):
         item = self.category_list.currentItem()
         if item is None:
             return "Vše"
-        return str(item.data(Qt.UserRole + 1) or "Vše")
+        return str(item.data(Qt.UserRole + 3) or item.data(Qt.UserRole + 1) or "Vše")
+
+    def selected_category_parent_id(self) -> int | None:
+        item = self.category_list.currentItem()
+        if item is None:
+            return None
+        parent_id = item.data(Qt.UserRole + 2)
+        return None if parent_id is None else int(parent_id)
 
     def update_category_controls(self) -> None:
         category_id = self.selected_category_id()
@@ -2607,6 +2798,60 @@ class MainWindow(QMainWindow):
         self.reload_media()
         self.statusBar().showMessage(f"Vytvořena kategorie „{name}“.", 3500)
 
+    def add_subcategory(self, parent_id: int | None = None) -> None:
+        if parent_id is None:
+            parent_id = self.selected_category_id()
+        if parent_id is None:
+            return
+
+        parent = self.db.category_by_id(int(parent_id))
+        if parent is None:
+            return
+        if parent["parent_id"] is not None:
+            QMessageBox.information(
+                self,
+                "Podkategorie",
+                "Podkategorie může být zatím jen jednu úroveň hluboko.",
+            )
+            return
+        if int(parent_id) == self.db.default_category_id():
+            QMessageBox.information(
+                self,
+                "Podkategorie",
+                "Do „Nezařazené“ podkategorie nepřidáváme.",
+            )
+            return
+
+        parent_name = str(parent["name"])
+        name, ok = QInputDialog.getText(
+            self,
+            "Nová podkategorie",
+            f"Podkategorie v „{parent_name}“:",
+        )
+        name = name.strip()
+        if not ok or not name:
+            return
+
+        try:
+            category_id = self.db.add_category(name, int(parent_id))
+        except sqlite3.IntegrityError:
+            QMessageBox.information(
+                self,
+                "Podkategorie",
+                "Kategorie nebo podkategorie s tímto názvem už existuje.",
+            )
+            return
+        except ValueError as exc:
+            QMessageBox.information(self, "Podkategorie", str(exc))
+            return
+
+        self.reload_categories(category_id)
+        self.reload_media()
+        self.statusBar().showMessage(
+            f"Vytvořena podkategorie „{parent_name} › {name}“.",
+            3500,
+        )
+
     def rename_category(self) -> None:
         item = self.category_list.currentItem()
         if item is None:
@@ -2708,6 +2953,7 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
 
         new_action = menu.addAction("Nová kategorie")
+        new_subcategory_action = menu.addAction("Nová podkategorie")
         rename_action = menu.addAction("Přejmenovat")
         menu.addSeparator()
         up_action = menu.addAction("Posunout nahoru")
@@ -2720,7 +2966,12 @@ class MainWindow(QMainWindow):
         is_default = (
             is_real and int(category_id) == self.db.default_category_id()
         )
+        parent_id = self.selected_category_parent_id()
+        is_top_level = is_real and parent_id is None
 
+        new_subcategory_action.setEnabled(
+            is_top_level and not is_default
+        )
         rename_action.setEnabled(is_real and not is_default)
         up_action.setEnabled(is_real)
         down_action.setEnabled(is_real)
@@ -2729,6 +2980,10 @@ class MainWindow(QMainWindow):
         chosen = menu.exec(self.category_list.mapToGlobal(pos))
         if chosen == new_action:
             self.add_category()
+        elif chosen == new_subcategory_action:
+            self.add_subcategory(
+                None if category_id is None else int(category_id)
+            )
         elif chosen == rename_action:
             self.rename_category()
         elif chosen == up_action:
@@ -2739,8 +2994,17 @@ class MainWindow(QMainWindow):
             self.delete_category()
 
     def on_category_changed(self, current, previous) -> None:
+        self.search_edit.blockSignals(True)
+        self.type_filter_combo.blockSignals(True)
+        try:
+            self.search_edit.clear()
+            self.type_filter_combo.setCurrentIndex(0)
+        finally:
+            self.search_edit.blockSignals(False)
+            self.type_filter_combo.blockSignals(False)
+
         self.update_category_controls()
-        self.reload_media()
+        self.reload_media(select_media_id=None)
 
     def selected_media_ids(self) -> list[int]:
         ids = []
@@ -3263,7 +3527,9 @@ class MainWindow(QMainWindow):
 
         for row in self.db.categories():
             category_id = int(row["id"])
-            action = move_menu.addAction(str(row["name"]))
+            action = move_menu.addAction(
+                self.db.category_path_name(category_id)
+            )
             action.triggered.connect(
                 lambda _checked=False, target_id=category_id, ids=frozen_move_ids:
                     self.move_media_ids_to(list(ids), target_id)
