@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.8.8"
+APP_VERSION = "0.8.9"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -632,6 +632,14 @@ class MediaListWidget(QListWidget):
         self.setProperty("dragActive", active)
         self.style().unpolish(self)
         self.style().polish(self)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.RightButton:
+            item = self.itemAt(event.position().toPoint())
+            if item is not None and item.isSelected():
+                event.accept()
+                return
+        super().mousePressEvent(event)
 
     def dragEnterEvent(self, event) -> None:
         paths = extract_drop_paths(event)
@@ -3147,8 +3155,13 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         open_action = menu.addAction("Otevřít původní soubor")
 
-        rating_menu = menu.addMenu("Hodnocení")
-        rating_actions = {}
+        rating_title = (
+            f"Hodnocení ({len(selected_ids)} položek)"
+            if len(selected_ids) > 1
+            else "Hodnocení"
+        )
+        rating_menu = menu.addMenu(rating_title)
+        frozen_ids = tuple(selected_ids)
         for label, value in (
             ("Bez hodnocení", 0),
             ("★", 1),
@@ -3156,7 +3169,10 @@ class MainWindow(QMainWindow):
             ("★★★", 3),
         ):
             action = rating_menu.addAction(label)
-            rating_actions[action] = value
+            action.triggered.connect(
+                lambda _checked=False, rating=value, ids=frozen_ids:
+                    self.rate_media_ids(list(ids), rating)
+            )
 
         move_menu = menu.addMenu("Přesunout do kategorie")
 
@@ -3173,8 +3189,6 @@ class MainWindow(QMainWindow):
             self.open_current()
         elif chosen == delete_action:
             self.delete_selected_media()
-        elif chosen in rating_actions:
-            self.rate_media_ids(selected_ids, rating_actions[chosen])
         elif chosen is not None and chosen.parent() == move_menu:
             category_id = chosen.data()
             if category_id is not None:
