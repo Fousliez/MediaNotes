@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.8.9"
+APP_VERSION = "0.9.0"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -2773,6 +2773,32 @@ class MainWindow(QMainWindow):
             return
 
         rating = max(1, min(3, int(rating)))
+        selected_ids = self.selected_media_ids()
+
+        if len(selected_ids) > 1:
+            new_rating = rating
+            self.db.update_media_ratings(selected_ids, new_rating)
+            self.current_rating = new_rating
+
+            if self.loaded_detail_state is not None:
+                caption, notes, category_id, _old_rating = self.loaded_detail_state
+                self.loaded_detail_state = (
+                    caption,
+                    notes,
+                    category_id,
+                    self.current_rating,
+                )
+
+            self._refresh_rating_buttons()
+            self.save_feedback_active = False
+            self._update_save_button_state()
+            self.statusBar().showMessage(
+                f"Hodnocení {'★' * new_rating} nastaveno pro "
+                f"{len(selected_ids)} položek.",
+                2000,
+            )
+            return
+
         self.current_rating = 0 if self.current_rating == rating else rating
         self.db.update_media_rating(self.current_media_id, self.current_rating)
         self._refresh_rating_buttons()
