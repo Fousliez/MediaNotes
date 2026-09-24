@@ -52,7 +52,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.6"
+APP_VERSION = "0.9.7"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1657,19 +1657,19 @@ class MainWindow(QMainWindow):
         preview_actions.setSpacing(4)
 
         self.play_pause_btn = QPushButton("▶ Přehrát")
-        self.play_pause_btn.setFixedSize(112, 30)
+        self.play_pause_btn.setFixedSize(102, 30)
         self.play_pause_btn.setEnabled(False)
         self.play_pause_btn.setVisible(False)
         preview_actions.addWidget(self.play_pause_btn)
 
         self.mute_btn = QPushButton("Ztlumit")
-        self.mute_btn.setFixedSize(112, 30)
+        self.mute_btn.setFixedSize(102, 30)
         self.mute_btn.setEnabled(False)
         self.mute_btn.setVisible(False)
         preview_actions.addWidget(self.mute_btn)
 
         self.open_btn = QPushButton("Otevřít")
-        self.open_btn.setFixedSize(112, 30)
+        self.open_btn.setFixedSize(102, 30)
         self.open_btn.setEnabled(False)
 
         self.open_menu = QMenu(self.open_btn)
