@@ -52,7 +52,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.8"
+APP_VERSION = "0.9.9"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1379,6 +1379,7 @@ class MainWindow(QMainWindow):
         self.sort_descending = True
         self.save_feedback_active = False
         self.notebook_dialog: NotebookDialog | None = None
+        self.expanded_category_ids: set[int] = set()
 
         self.audio_output = QAudioOutput(self)
         self.audio_output.setMuted(False)
@@ -1900,7 +1901,7 @@ class MainWindow(QMainWindow):
 
         self.category_list.currentItemChanged.connect(self.on_category_changed)
         self.category_list.itemDoubleClicked.connect(
-            lambda _item: self.rename_category()
+            self.toggle_category_expanded
         )
         self.category_list.customContextMenuRequested.connect(
             self.show_category_context_menu
@@ -2449,6 +2450,11 @@ class MainWindow(QMainWindow):
             for row in rows
             if row["parent_id"] is None
         }
+        parent_ids_with_children = {
+            int(row["parent_id"])
+            for row in rows
+            if row["parent_id"] is not None
+        }
 
         for row_index, row in enumerate(rows, start=1):
             category_id = int(row["id"])
@@ -2461,7 +2467,15 @@ class MainWindow(QMainWindow):
             )
 
             if parent_id is None:
-                display_text = f"{name}  ·  {count}"
+                if category_id in parent_ids_with_children:
+                    arrow = (
+                        "▾"
+                        if category_id in self.expanded_category_ids
+                        else "▸"
+                    )
+                    display_text = f"{arrow} {name}  ·  {count}"
+                else:
+                    display_text = f"{name}  ·  {count}"
                 path_name = name
             else:
                 display_text = f"    ↳ {name}  ·  {count}"
@@ -2478,6 +2492,12 @@ class MainWindow(QMainWindow):
             item.setData(Qt.UserRole + 2, parent_id)
             item.setData(Qt.UserRole + 3, path_name)
             self.category_list.addItem(item)
+
+            if (
+                parent_id is not None
+                and parent_id not in self.expanded_category_ids
+            ):
+                item.setHidden(True)
 
             self.category_combo.addItem(path_name, category_id)
 
@@ -2505,6 +2525,26 @@ class MainWindow(QMainWindow):
             return None
         parent_id = item.data(Qt.UserRole + 2)
         return None if parent_id is None else int(parent_id)
+
+    def toggle_category_expanded(self, item: QListWidgetItem) -> None:
+        category_id = item.data(Qt.UserRole)
+        if category_id is None:
+            return
+
+        parent_id = item.data(Qt.UserRole + 2)
+        if parent_id is not None:
+            return
+
+        category_id = int(category_id)
+        if not self.db.has_subcategories(category_id):
+            return
+
+        if category_id in self.expanded_category_ids:
+            self.expanded_category_ids.remove(category_id)
+        else:
+            self.expanded_category_ids.add(category_id)
+
+        self.reload_categories(category_id)
 
     def update_category_controls(self) -> None:
         category_id = self.selected_category_id()
@@ -2845,6 +2885,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Podkategorie", str(exc))
             return
 
+        self.expanded_category_ids.add(int(parent_id))
         self.reload_categories(category_id)
         self.reload_media()
         self.statusBar().showMessage(
@@ -2940,6 +2981,7 @@ class MainWindow(QMainWindow):
 
         try:
             self.db.delete_category(int(category_id))
+            self.expanded_category_ids.discard(int(category_id))
         except ValueError as exc:
             QMessageBox.information(self, "Kategorie", str(exc))
             return
