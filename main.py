@@ -515,7 +515,7 @@ class Database:
         if self.has_subcategories(category_id):
             raise ValueError(
                 "Kategorie obsahuje podkategorie. "
-                "Nejdřív smaž nebo přesuň její podkategorie."
+                "Nejdřív smaž její podkategorie."
             )
 
         self.conn.execute(
