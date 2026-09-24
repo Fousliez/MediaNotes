@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.8.1"
+APP_VERSION = "0.8.2"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1504,7 +1504,18 @@ class MainWindow(QMainWindow):
         self.sort_direction_btn.setFixedSize(32, 28)
         self.sort_direction_btn.move(113, 1)
         self.sort_direction_btn.setFocusPolicy(Qt.NoFocus)
+
+        self.sort_direction_separator = QFrame(self.sort_direction_btn)
+        self.sort_direction_separator.setObjectName("sortDirectionSeparator")
+        self.sort_direction_separator.setFixedSize(2, 20)
+        self.sort_direction_separator.move(0, 4)
+        self.sort_direction_separator.setAttribute(
+            Qt.WA_TransparentForMouseEvents,
+            True,
+        )
+
         self.sort_direction_btn.raise_()
+        self.sort_direction_separator.raise_()
 
         media_header.addWidget(self.sort_combo)
 
@@ -1869,13 +1880,7 @@ class MainWindow(QMainWindow):
             }
 
             QPushButton#sortDirectionButton {
-                background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:0,
-                    stop:0 rgba(243,245,247,0),
-                    stop:0.40 rgba(220,225,231,95),
-                    stop:0.68 rgba(220,225,231,185),
-                    stop:1 #e7ebef
-                );
+                background: transparent;
                 color: #59636f;
                 border: none;
                 border-radius: 0 10px 10px 0;
@@ -1886,24 +1891,24 @@ class MainWindow(QMainWindow):
             }
 
             QPushButton#sortDirectionButton:hover {
-                background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:0,
-                    stop:0 rgba(236,239,243,0),
-                    stop:0.40 rgba(205,212,220,120),
-                    stop:0.68 rgba(205,212,220,205),
-                    stop:1 #dfe4e9
-                );
+                background: rgba(220,225,231,90);
                 color: #252b33;
             }
 
             QPushButton#sortDirectionButton:pressed {
+                background: rgba(205,212,220,130);
+            }
+
+            QFrame#sortDirectionSeparator {
                 background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:0,
-                    stop:0 rgba(225,229,234,0),
-                    stop:0.40 rgba(195,202,211,145),
-                    stop:0.68 rgba(195,202,211,220),
-                    stop:1 #d5dbe1
+                    x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(155,164,174,0),
+                    stop:0.20 rgba(155,164,174,90),
+                    stop:0.50 rgba(125,135,146,220),
+                    stop:0.80 rgba(155,164,174,90),
+                    stop:1 rgba(155,164,174,0)
                 );
+                border: none;
             }
 
             QComboBox#filterCombo:focus,
