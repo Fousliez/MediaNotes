@@ -52,7 +52,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.2"
+APP_VERSION = "0.9.3"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -3122,20 +3122,28 @@ class MainWindow(QMainWindow):
             media_ids = [self.current_media_id]
         self.rate_media_ids(media_ids, rating)
 
-    def move_selected_media_to(self, category_id: int) -> None:
-        media_ids = self.selected_media_ids()
-        if not media_ids and self.current_media_id is not None:
-            media_ids = [self.current_media_id]
+    def move_media_ids_to(
+        self,
+        media_ids: list[int],
+        category_id: int,
+    ) -> None:
         if not media_ids:
             return
 
+        source_category_id = self.selected_category_id()
         self.db.move_media(media_ids, category_id)
-        self.reload_categories(self.selected_category_id())
-        self.reload_media()
+        self.reload_categories(source_category_id)
+        self.reload_media(select_media_id=None)
         self.statusBar().showMessage(
             f"Přesunuto {len(media_ids)} položek.",
             3500,
         )
+
+    def move_selected_media_to(self, category_id: int) -> None:
+        media_ids = self.selected_media_ids()
+        if not media_ids and self.current_media_id is not None:
+            media_ids = [self.current_media_id]
+        self.move_media_ids_to(media_ids, category_id)
 
     def delete_selected_media(self) -> None:
         media_ids = self.selected_media_ids()
@@ -3208,11 +3216,15 @@ class MainWindow(QMainWindow):
             )
 
         move_menu = menu.addMenu("Přesunout do kategorie")
+        frozen_move_ids = tuple(selected_ids)
 
         for row in self.db.categories():
             category_id = int(row["id"])
             action = move_menu.addAction(str(row["name"]))
-            action.setData(category_id)
+            action.triggered.connect(
+                lambda _checked=False, target_id=category_id, ids=frozen_move_ids:
+                    self.move_media_ids_to(list(ids), target_id)
+            )
 
         menu.addSeparator()
         delete_action = menu.addAction("Smazat z databáze")
@@ -3222,10 +3234,6 @@ class MainWindow(QMainWindow):
             self.open_current()
         elif chosen == delete_action:
             self.delete_selected_media()
-        elif chosen is not None and chosen.parent() == move_menu:
-            category_id = chosen.data()
-            if category_id is not None:
-                self.move_selected_media_to(int(category_id))
 
     def open_current(self) -> None:
         if self.current_media_id is None:
