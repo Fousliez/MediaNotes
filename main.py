@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -50,7 +52,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.1"
+APP_VERSION = "0.9.2"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -3252,7 +3254,8 @@ class MainWindow(QMainWindow):
         if row is None:
             return
 
-        folder = Path(row["path"]).parent
+        path = Path(row["path"])
+        folder = path.parent
         if not folder.exists():
             QMessageBox.warning(
                 self,
@@ -3260,6 +3263,53 @@ class MainWindow(QMainWindow):
                 "Složka, ve které byl soubor uložený, už neexistuje.",
             )
             return
+
+        if path.exists():
+            uri = QUrl.fromLocalFile(str(path)).toString()
+
+            gdbus = shutil.which("gdbus")
+            if gdbus:
+                try:
+                    result = subprocess.run(
+                        [
+                            gdbus,
+                            "call",
+                            "--session",
+                            "--dest",
+                            "org.freedesktop.FileManager1",
+                            "--object-path",
+                            "/org/freedesktop/FileManager1",
+                            "--method",
+                            "org.freedesktop.FileManager1.ShowItems",
+                            f"['{uri}']",
+                            "",
+                        ],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=2,
+                        check=False,
+                    )
+                    if result.returncode == 0:
+                        return
+                except (OSError, subprocess.SubprocessError):
+                    pass
+
+            for executable, args in (
+                ("thunar", ["--select", str(path)]),
+                ("dolphin", ["--select", str(path)]),
+                ("nautilus", ["--select", str(path)]),
+            ):
+                program = shutil.which(executable)
+                if program:
+                    try:
+                        subprocess.Popen(
+                            [program, *args],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                        return
+                    except OSError:
+                        continue
 
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
