@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.8.6"
+APP_VERSION = "0.8.7"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -544,6 +544,17 @@ class Database:
         self.conn.execute(
             "UPDATE media SET rating = ? WHERE id = ?",
             (rating, media_id),
+        )
+        self.conn.commit()
+
+    def update_media_ratings(self, media_ids: list[int], rating: int) -> None:
+        if not media_ids:
+            return
+        rating = max(0, min(3, int(rating)))
+        placeholders = ",".join("?" for _ in media_ids)
+        self.conn.execute(
+            f"UPDATE media SET rating = ? WHERE id IN ({placeholders})",
+            [rating, *media_ids],
         )
         self.conn.commit()
 
@@ -3049,6 +3060,24 @@ class MainWindow(QMainWindow):
         self._show_saved_feedback()
         self.statusBar().showMessage("Změny uloženy.", 3000)
 
+    def rate_selected_media(self, rating: int) -> None:
+        media_ids = self.selected_media_ids()
+        if not media_ids and self.current_media_id is not None:
+            media_ids = [self.current_media_id]
+        if not media_ids:
+            return
+
+        rating = max(0, min(3, int(rating)))
+        current = self.current_media_id
+        self.db.update_media_ratings(media_ids, rating)
+        self.reload_media(select_media_id=current)
+
+        label = "bez hodnocení" if rating == 0 else "★" * rating
+        self.statusBar().showMessage(
+            f"Hodnocení {label} nastaveno pro {len(media_ids)} položek.",
+            2500,
+        )
+
     def move_selected_media_to(self, category_id: int) -> None:
         media_ids = self.selected_media_ids()
         if not media_ids and self.current_media_id is not None:
@@ -3108,6 +3137,19 @@ class MainWindow(QMainWindow):
 
         menu = QMenu(self)
         open_action = menu.addAction("Otevřít původní soubor")
+
+        rating_menu = menu.addMenu("Hodnocení")
+        rating_actions = []
+        for label, value in (
+            ("Bez hodnocení", 0),
+            ("★", 1),
+            ("★★", 2),
+            ("★★★", 3),
+        ):
+            action = rating_menu.addAction(label)
+            action.setData(value)
+            rating_actions.append(action)
+
         move_menu = menu.addMenu("Přesunout do kategorie")
 
         for row in self.db.categories():
@@ -3123,6 +3165,10 @@ class MainWindow(QMainWindow):
             self.open_current()
         elif chosen == delete_action:
             self.delete_selected_media()
+        elif chosen is not None and chosen.parent() == rating_menu:
+            rating = chosen.data()
+            if rating is not None:
+                self.rate_selected_media(int(rating))
         elif chosen is not None and chosen.parent() == move_menu:
             category_id = chosen.data()
             if category_id is not None:
