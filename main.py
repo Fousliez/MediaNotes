@@ -52,7 +52,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.11"
+APP_VERSION = "0.9.12"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -2451,6 +2451,12 @@ class MainWindow(QMainWindow):
             for row in rows
             if row["parent_id"] is None
         }
+        parent_ids_with_children = {
+            int(row["parent_id"])
+            for row in rows
+            if row["parent_id"] is not None
+        }
+
         for row_index, row in enumerate(rows, start=1):
             category_id = int(row["id"])
             name = str(row["name"])
@@ -2478,6 +2484,16 @@ class MainWindow(QMainWindow):
             item.setData(Qt.UserRole + 1, name)
             item.setData(Qt.UserRole + 2, parent_id)
             item.setData(Qt.UserRole + 3, path_name)
+
+            if (
+                parent_id is None
+                and category_id in parent_ids_with_children
+            ):
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+                item.setToolTip("Dvojklikem zobrazit podkategorie")
+
             self.category_list.addItem(item)
 
             if (
