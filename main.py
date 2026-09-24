@@ -52,7 +52,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.13"
+APP_VERSION = "0.9.14"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -2583,12 +2583,19 @@ class MainWindow(QMainWindow):
         reverse = bool(self.sort_descending)
 
         if sort_mode == "name":
-            rows.sort(
-                key=lambda row: (
-                    str(row["caption"]).strip() or Path(row["path"]).name
-                ).casefold(),
+            named_rows = [
+                row for row in rows
+                if str(row["caption"]).strip()
+            ]
+            unnamed_rows = [
+                row for row in rows
+                if not str(row["caption"]).strip()
+            ]
+            named_rows.sort(
+                key=lambda row: str(row["caption"]).strip().casefold(),
                 reverse=reverse,
             )
+            rows = named_rows + unnamed_rows
         elif sort_mode == "rating":
             rows.sort(
                 key=lambda row: (
