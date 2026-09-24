@@ -50,7 +50,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.8.5"
+APP_VERSION = "0.8.6"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -2311,14 +2311,7 @@ class MainWindow(QMainWindow):
             path = Path(row["path"])
             caption = row["caption"].strip()
             rating = int(row["rating"] or 0)
-            if caption and rating:
-                display_title = f"{'★' * rating} {caption}"
-            elif caption:
-                display_title = caption
-            elif rating:
-                display_title = "★" * rating
-            else:
-                display_title = ""
+            display_title = caption
 
             item = QListWidgetItem(display_title)
             item.setData(Qt.UserRole, int(row["id"]))
@@ -2779,15 +2772,7 @@ class MainWindow(QMainWindow):
             row = self.db.media_by_id(self.current_media_id)
             if row is not None:
                 caption = str(row["caption"]).strip()
-                if caption and self.current_rating:
-                    display_title = f"{'★' * self.current_rating} {caption}"
-                elif caption:
-                    display_title = caption
-                elif self.current_rating:
-                    display_title = "★" * self.current_rating
-                else:
-                    display_title = ""
-                item.setText(display_title)
+                item.setText(caption)
 
                 rating_text = (
                     "★" * self.current_rating
