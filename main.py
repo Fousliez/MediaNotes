@@ -52,7 +52,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-APP_VERSION = "0.9.5"
+APP_VERSION = "0.9.6"
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = APP_DIR / "data"
@@ -1022,10 +1022,12 @@ class NotebookDialog(QDialog):
 
         self.edit_btn = QPushButton("Editovat")
         self.edit_btn.setObjectName("notebookEditButton")
+        self.edit_btn.setFixedSize(96, 30)
         footer.addWidget(self.edit_btn)
 
         self.save_btn = QPushButton("Uložit")
         self.save_btn.setObjectName("notebookSaveButton")
+        self.save_btn.setFixedSize(96, 30)
         self.save_btn.setEnabled(True)
         self.save_btn.setProperty("dirty", False)
         self.save_btn.setProperty("saved", False)
@@ -1426,6 +1428,7 @@ class MainWindow(QMainWindow):
 
         self.notebook_btn = QPushButton("✎  Sešit")
         self.notebook_btn.setObjectName("notebookButton")
+        self.notebook_btn.setFixedHeight(30)
         self.notebook_btn.setToolTip("Otevřít samostatný sešit poznámek")
         sidebar_layout.addWidget(self.notebook_btn)
 
@@ -1445,7 +1448,7 @@ class MainWindow(QMainWindow):
         self.add_category_btn = QPushButton("＋")
         self.add_category_btn.setObjectName("miniButton")
         self.add_category_btn.setToolTip("Nová kategorie")
-        self.add_category_btn.setFixedWidth(30)
+        self.add_category_btn.setFixedSize(30, 30)
         sidebar_header.addWidget(self.add_category_btn)
         sidebar_layout.addLayout(sidebar_header)
 
@@ -1460,25 +1463,26 @@ class MainWindow(QMainWindow):
         category_buttons.setSpacing(4)
 
         self.rename_category_btn = QPushButton("Přejmenovat")
+        self.rename_category_btn.setFixedHeight(30)
         self.rename_category_btn.setToolTip("Přejmenovat vybranou kategorii")
         category_buttons.addWidget(self.rename_category_btn)
 
         self.category_up_btn = QPushButton("↑")
         self.category_up_btn.setObjectName("miniButton")
         self.category_up_btn.setToolTip("Posunout kategorii nahoru")
-        self.category_up_btn.setFixedWidth(30)
+        self.category_up_btn.setFixedSize(30, 30)
         category_buttons.addWidget(self.category_up_btn)
 
         self.category_down_btn = QPushButton("↓")
         self.category_down_btn.setObjectName("miniButton")
         self.category_down_btn.setToolTip("Posunout kategorii dolů")
-        self.category_down_btn.setFixedWidth(30)
+        self.category_down_btn.setFixedSize(30, 30)
         category_buttons.addWidget(self.category_down_btn)
 
         self.delete_category_btn = QPushButton("×")
         self.delete_category_btn.setObjectName("dangerMiniButton")
         self.delete_category_btn.setToolTip("Smazat kategorii")
-        self.delete_category_btn.setFixedWidth(30)
+        self.delete_category_btn.setFixedSize(30, 30)
         category_buttons.addWidget(self.delete_category_btn)
 
         sidebar_layout.addLayout(category_buttons)
@@ -1653,16 +1657,19 @@ class MainWindow(QMainWindow):
         preview_actions.setSpacing(4)
 
         self.play_pause_btn = QPushButton("▶ Přehrát")
+        self.play_pause_btn.setFixedSize(112, 30)
         self.play_pause_btn.setEnabled(False)
         self.play_pause_btn.setVisible(False)
         preview_actions.addWidget(self.play_pause_btn)
 
         self.mute_btn = QPushButton("Ztlumit")
+        self.mute_btn.setFixedSize(112, 30)
         self.mute_btn.setEnabled(False)
         self.mute_btn.setVisible(False)
         preview_actions.addWidget(self.mute_btn)
 
         self.open_btn = QPushButton("Otevřít")
+        self.open_btn.setFixedSize(112, 30)
         self.open_btn.setEnabled(False)
 
         self.open_menu = QMenu(self.open_btn)
@@ -1705,10 +1712,12 @@ class MainWindow(QMainWindow):
         self.save_btn.setEnabled(False)
         self.save_btn.setProperty("dirty", False)
         self.save_btn.setProperty("saved", False)
+        self.save_btn.setFixedSize(145, 30)
         buttons.addWidget(self.save_btn)
 
         self.delete_media_btn = QPushButton("Smazat z databáze")
         self.delete_media_btn.setObjectName("dangerButton")
+        self.delete_media_btn.setFixedSize(145, 30)
         buttons.addWidget(self.delete_media_btn)
 
         detail_layout.addLayout(buttons)
@@ -2024,7 +2033,8 @@ class MainWindow(QMainWindow):
                 color: #252b33;
                 border: 1px solid #cbd2da;
                 border-radius: 6px;
-                padding: 5px 8px;
+                padding: 4px 8px;
+                min-height: 20px;
             }
 
             QPushButton:hover {
